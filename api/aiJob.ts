@@ -154,6 +154,11 @@ export async function sweepStaleAiJobs(): Promise<void> {
       .set({ status: "failed", error: "Generazione interrotta: il server è stato riavviato" })
       .where(eq(models.status, "processing"));
   } catch (err) {
-    log.error("sweep ai jobs fallito", { error: err instanceof Error ? err.message : String(err) });
+    // drizzle avvolge l'errore di Postgres: la causa vera (password, host, SSL…) è in err.cause
+    const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;
+    log.error("database non raggiungibile all'avvio", {
+      error: cause?.message ?? (err instanceof Error ? err.message : String(err)),
+      code: (cause as { code?: string } | null)?.code,
+    });
   }
 }
