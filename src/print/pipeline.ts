@@ -27,6 +27,7 @@ import {
   type Plate,
 } from "./solid";
 import { build3mf, build3mfPerPlate } from "./threemf";
+import { voxelRemesh } from "./remesh";
 import { wallThickness, type WallReport } from "./wall";
 
 export interface PrintInput {
@@ -56,6 +57,8 @@ export interface PrintReport {
   holesSkipped: number;
   facesFlipped: number;
   pieces: number;
+  /** il modello è stato rifuso con i voxel perché non era riparabile */
+  rebuilt: boolean;
   /** perni di allineamento da stampare */
   pins: number;
   plates: number;
@@ -133,7 +136,22 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
 
   onStage("Costruzione del solido");
   await tick();
-  let tracked = toManifold(w, mesh);
+  let tracked: ReturnType<typeof toManifold>;
+  let rebuilt = false;
+  try {
+    tracked = toManifold(w, mesh);
+  } catch {
+    // superfici che si incrociano o spigoli condivisi da 3+ facce (frequente
+    // nei modelli AI): si rifonde il modello come un solido unico
+    onStage("Ricostruzione del solido");
+    await tick();
+    const r = voxelRemesh(w, mesh);
+    tracked = toManifold(w, r.mesh);
+    rebuilt = true;
+    warnings.push(
+      `Il modello aveva superfici che si incrociano: l'ho ricostruito come un solido unico (dettagli sotto ${r.cellMm.toFixed(1).replace(".", ",")} mm leggermente smussati)`,
+    );
+  }
 
   let baseLabel = 0;
   if (opts.magnet) {
@@ -188,7 +206,7 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
       `Pareti sottili: il ${Math.round(wall.thinShare * 100)}% della superficie è sotto ${wall.thresholdMm} mm. Ingrandisci la stampa o rinforza quei punti`,
     );
   }
-  if (filled.skipped > 0) warnings.push(`${filled.skipped} buchi complessi non chiusi automaticamente`);
+  if (filled.skipped > 0 && !rebuilt) warnings.push(`${filled.skipped} buchi complessi non chiusi automaticamente`);
 
   onStage("Scrittura del file 3MF");
   await tick();
@@ -205,6 +223,7 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
       holesSkipped: filled.skipped,
       facesFlipped: oriented.flipped,
       pieces: pieces.length,
+      rebuilt,
       pins: pins.length,
       plates,
       fitsPlate: fits,

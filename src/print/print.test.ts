@@ -246,3 +246,33 @@ describe("calamita", () => {
     expect(pocketTop).toBeGreaterThan(8);
   });
 });
+
+describe("modelli non riparabili (stile AI)", () => {
+  it("due cubi compenetrati con una pinna (3 facce su uno spigolo) diventano un solido stampabile", async () => {
+    const a = soupOf(new THREE.BoxGeometry(1, 1, 1));
+    const b = soupOf(new THREE.BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0));
+    // pinna: un triangolo isolato attaccato a uno spigolo (3 facce sullo stesso spigolo)
+    const fin = new Float32Array([-0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -1.0, -1.2, 0]);
+    const soup = new Float32Array(a.soup.length + b.soup.length + fin.length);
+    soup.set(a.soup);
+    soup.set(b.soup, a.soup.length);
+    soup.set(fin, a.soup.length + b.soup.length);
+    const T = soup.length / 9;
+    const triColor = new Float32Array(T * 3);
+    for (let t = 0; t < T; t++) triColor.set(t < a.soup.length / 9 ? [0.9, 0.1, 0.1] : [0.1, 0.1, 0.9], t * 3);
+    const out = await preparePrint({ soup, triColor }, { longestMm: 60, colors: 2, base: null, plate: PLATE, name: "Rotto" });
+    expect(out.report.rebuilt).toBe(true);
+    expect(out.report.warnings.join(" ")).toMatch(/ricostruito/);
+    const r = analyzePrintability(pieceToMesh(out.placed[0]));
+    expect(r.watertight).toBe(true);
+    // estensione 1,5 unità (+ pinna) = 60 mm; unione dei due cubi = 2 − 0,25 = 1,75 unità³.
+    // La pinna allarga l'ingombro: si misura la scala reale dal report delle dimensioni
+    const unit = 60 / Math.max(1.5 + 0.5, 1.5 + 0.7); // pinna fino a -1,0 / -1,2
+    const expected = (1.75 * unit ** 3) / 1000;
+    expect(out.report.volumeCm3).toBeGreaterThan(expected * 0.95);
+    expect(out.report.volumeCm3).toBeLessThan(expected * 1.05);
+    // i due colori sopravvivono
+    expect(out.palette.length).toBe(2);
+    expect(new Set(out.placed[0].mesh.label).size).toBe(2);
+  }, 60_000);
+});
