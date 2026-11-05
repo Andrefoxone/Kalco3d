@@ -58,6 +58,7 @@ Le generazioni AI girano in background sul server per diversi minuti: serve un s
 - Il credito si scala prima di chiamare il motore AI e torna indietro se la generazione fallisce.
 - Massimo 2 generazioni contemporanee per utente.
 - I crediti si accreditano **solo** dal webhook firmato `POST /api/stripe/webhook`. Gli eventi richiesti sono `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated` e `customer.subscription.deleted`.
+- Gli account in `ADMIN_EMAILS` generano senza scalare crediti (e possono avere il doppio delle generazioni in corso).
 - Le variabili `STRIPE_*` sono in `.env.example`. Senza queste variabili i pagamenti restano spenti.
 
 ## Comandi

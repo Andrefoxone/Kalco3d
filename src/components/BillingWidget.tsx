@@ -67,8 +67,8 @@ export function BillingWidget() {
         aria-label="Crediti e piani"
       >
         <Zap className="size-3.5 text-[#ff670d]" aria-hidden="true" />
-        <span className="font-medium tabular-nums">{acc ? acc.balance : "…"}</span>
-        <span className="hidden sm:inline">crediti</span>
+        <span className="font-medium tabular-nums">{acc ? (acc.admin ? "∞" : acc.balance) : "…"}</span>
+        <span className="hidden sm:inline">{acc?.admin ? "admin" : "crediti"}</span>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -76,7 +76,9 @@ export function BillingWidget() {
           <DialogHeader>
             <DialogTitle className="font-display text-3xl font-normal tracking-tight">Crediti e piani</DialogTitle>
             <DialogDescription className="text-sm text-[#525252]">
-              {reason ?? (
+              {acc?.admin && !reason ? (
+                <>Account amministratore: le generazioni non scalano crediti (il costo dei motori AI resta a tuo carico).</>
+              ) : reason ?? (
                 <>
                   Hai <strong className="text-[#171717]">{acc?.balance ?? 0} crediti</strong>
                   {acc && acc.planBalance > 0 && ` (${acc.planBalance} del piano, ${acc.extraBalance} extra)`}. Un modello

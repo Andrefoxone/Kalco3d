@@ -7,7 +7,7 @@ import { models } from "../../db/schema";
 import { storage } from "../lib/storage";
 import { buildGlb, buildMesh } from "../lib/glb";
 import { canStartAiJob, startAiJob } from "../aiJob";
-import { addCredits, spendCredits } from "../lib/credits";
+import { addCredits, isAdmin, spendCredits } from "../lib/credits";
 import { creditCost, MAX_JOBS_PER_USER } from "@contracts/billing";
 import { count } from "drizzle-orm";
 import {
@@ -70,21 +70,23 @@ async function withUrls<
   }));
 }
 
-async function checkUserJobs(userId: string) {
+async function checkUserJobs(userId: string, admin = false) {
+  const max = admin ? MAX_JOBS_PER_USER * 2 : MAX_JOBS_PER_USER;
   const [r] = await getDb()
     .select({ n: count() })
     .from(models)
     .where(and(eq(models.userId, userId), eq(models.status, "processing")));
-  if ((r?.n ?? 0) >= MAX_JOBS_PER_USER) {
+  if ((r?.n ?? 0) >= max) {
     throw new TRPCError({
       code: "TOO_MANY_REQUESTS",
-      message: `Hai già ${MAX_JOBS_PER_USER} generazioni in corso: aspetta che finisca una`,
+      message: `Hai già ${max} generazioni in corso: aspetta che finisca una`,
     });
   }
 }
 
 /** Scala i crediti, esegue start(); se l'avvio fallisce restituisce i crediti. */
 async function withCharge<T>(userId: string, cost: number, start: () => Promise<T>): Promise<T> {
+  if (cost <= 0) return start();
   await spendCredits(userId, cost, "generazione");
   try {
     return await start();
@@ -239,8 +241,9 @@ export const modelsRouter = createRouter({
           message: "Altre generazioni AI sono in corso: riprova tra qualche minuto",
         });
       }
-      await checkUserJobs(ctx.user.id);
-      const cost = creditCost(input.quality, input.target);
+      const admin = isAdmin(ctx.user.email);
+      await checkUserJobs(ctx.user.id, admin);
+      const cost = admin ? 0 : creditCost(input.quality, input.target);
       return withCharge(ctx.user.id, cost, async () => {
       const safeName =
         input.name.replace(/[^\p{L}\p{N} _.'-]/gu, "").trim().slice(0, 80) || "modello";
@@ -271,7 +274,7 @@ export const modelsRouter = createRouter({
         })
         .returning({ id: models.id });
       const id = inserted[0]?.id;
-      startAiJob(id, { images, quality: input.quality, target: input.target }, `${ctx.user.id}/${safeName}`, { userId: ctx.user.id, cost });
+      startAiJob(id, { images, quality: input.quality, target: input.target }, `${ctx.user.id}/${safeName}`, cost > 0 ? { userId: ctx.user.id, cost } : undefined);
       const row = await getDb().query.models.findFirst({ where: eq(models.id, id) });
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const [withUrl] = await withUrls([row]);
@@ -334,8 +337,9 @@ export const modelsRouter = createRouter({
       const target = TARGETS.includes(parent.target as (typeof TARGETS)[number])
         ? (parent.target as (typeof TARGETS)[number])
         : "ecommerce";
-      await checkUserJobs(ctx.user.id);
-      const cost = creditCost(input.quality ?? quality, input.target ?? target);
+      const admin = isAdmin(ctx.user.email);
+      await checkUserJobs(ctx.user.id, admin);
+      const cost = admin ? 0 : creditCost(input.quality ?? quality, input.target ?? target);
       return withCharge(ctx.user.id, cost, async () => {
       const base = parent.name.replace(/\s*—\s*variante.*$/i, "").trim().slice(0, 56) || "modello";
       const siblings = await getDb()
@@ -371,7 +375,7 @@ export const modelsRouter = createRouter({
           target: input.target ?? target,
         },
         `${ctx.user.id}/${name.replace(/[^\p{L}\p{N} _.'-]/gu, "")}`,
-        { userId: ctx.user.id, cost },
+        cost > 0 ? { userId: ctx.user.id, cost } : undefined,
       );
       const row = await getDb().query.models.findFirst({ where: eq(models.id, id) });
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { authedQuery, createRouter, publicQuery } from "../middleware";
-import { ensureAccount } from "../lib/credits";
+import { ensureAccount, isAdmin } from "../lib/credits";
 import { billingEnabled, createCheckout, createPortal, priceId } from "../lib/billing";
 import { PACK, PLAN_IDS, PLANS } from "@contracts/billing";
 
@@ -19,7 +19,7 @@ export const billingRouter = createRouter({
   })),
 
   /** Saldo dell'utente; al primo accesso crea il conto con il bonus di benvenuto. */
-  account: authedQuery.query(async ({ ctx }) => ensureAccount(ctx.user.id)),
+  account: authedQuery.query(async ({ ctx }) => ({ ...(await ensureAccount(ctx.user.id)), admin: isAdmin(ctx.user.email) })),
 
   checkout: authedQuery
     .input(z.object({ item: z.enum([...PLAN_IDS, "pack"]) }))

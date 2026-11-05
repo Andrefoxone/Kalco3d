@@ -85,6 +85,7 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
   const [busy, setBusy] = useState(false);
   const [override, setOverride] = useState(false);
   const utils = trpc.useUtils();
+  const isAdmin = trpc.billing.account.useQuery(undefined, { staleTime: 15_000 }).data?.admin ?? false;
   const generateAi = trpc.models.generateAi.useMutation();
   const status = trpc.models.aiStatus.useQuery(undefined, { staleTime: 60_000 });
 
@@ -252,7 +253,7 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
           <span className="flex items-center gap-2">
             <Sparkles className="size-4" />
             Genera il modello 3D
-            <span className="ml-1 border-l border-white/40 pl-2 tabular-nums">{creditCost(quality, target)} crediti</span>
+            <span className="ml-1 border-l border-white/40 pl-2 tabular-nums">{isAdmin ? "admin" : `${creditCost(quality, target)} crediti`}</span>
           </span>
         )}
       </Button>

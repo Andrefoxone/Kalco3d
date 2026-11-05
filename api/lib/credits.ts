@@ -5,6 +5,13 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "../queries/connection";
 import { SIGNUP_BONUS } from "@contracts/billing";
 
+/** Account amministratori (ADMIN_EMAILS, separati da virgola): generano senza scalare crediti. */
+export function isAdmin(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const list = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return list.includes(email.toLowerCase());
+}
+
 export interface CreditAccount {
   plan: string;
   planStatus: string;
