@@ -1,5 +1,6 @@
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { supabaseAdmin } from "./lib/storage";
+import { log } from "./lib/logger";
 
 export interface AuthUser {
   id: string;
@@ -20,9 +21,13 @@ async function userFromRequest(req: Request): Promise<AuthUser | null> {
   if (!token) return null;
   try {
     const { data, error } = await supabaseAdmin().auth.getUser(token);
-    if (error || !data.user) return null;
+    if (error || !data.user) {
+      log.warn("token non valido", { reason: error?.message ?? "utente assente", status: error?.status });
+      return null;
+    }
     return { id: data.user.id, email: data.user.email ?? null };
-  } catch {
+  } catch (err) {
+    log.error("verifica token fallita", { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
