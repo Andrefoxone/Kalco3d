@@ -1,11 +1,11 @@
-// Tripo API v3 — https://developers.tripo3d.com/en/docs
+// Tripo API v3 — https://developers.tripo3d.ai/en/docs
 // upload foto → task image/multiview-to-model → polling → download immediato
 // (gli URL dei modelli scadono).
 import { tripoRequest } from "../plan";
 import { download, fetchWithTimeout, isGlb, readJson, sleep, type ExternalJson } from "../net";
 import { ProviderError, type GenerationRequest, type GenerationResult, type ProgressFn, type Provider, type View } from "../types";
 
-const BASE = process.env.TRIPO_API_BASE ?? "https://openapi.tripo3d.com/v3";
+const BASE = process.env.TRIPO_API_BASE ?? "https://openapi.tripo3d.ai/v3";
 const POLL_MS = 3000;
 const MAX_WAIT_MS = 15 * 60 * 1000;
 
