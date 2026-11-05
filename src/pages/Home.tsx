@@ -8,6 +8,7 @@ import { Viewport3D, type ViewportHandle } from "@/components/Viewport3D";
 import { ViewportToolbar } from "@/components/ViewportToolbar";
 import { CreatePanel } from "@/components/CreatePanel";
 import { AiCreatePanel } from "@/components/AiCreatePanel";
+import { BillingWidget } from "@/components/BillingWidget";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { GalleryPanel } from "@/components/GalleryPanel";
 import { StylePanel } from "@/components/StylePanel";
@@ -408,6 +409,7 @@ export default function Home() {
           {auth.email && (
             <>
               <span className="ml-3 hidden normal-case tracking-normal text-[#525252] sm:inline">{auth.email}</span>
+              <span className="ml-2"><BillingWidget /></span>
               <button
                 type="button"
                 onClick={() => void auth.signOut()}

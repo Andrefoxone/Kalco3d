@@ -1,12 +1,14 @@
 // Job asincroni foto → 3D. La mutation crea subito il record "processing";
 // qui il job gira in background sulla pipeline multi-motore (api/ai3d),
 // aggiorna avanzamento e fase nel DB, salva GLB + anteprima nello storage.
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "./queries/connection";
 import { models } from "../db/schema";
 import { storage } from "./lib/storage";
 import { log } from "./lib/logger";
-import { generateWithFallback, type GenerationRequest } from "./ai3d";
+import { addCredits } from "./lib/credits";
+import { generateWithFallback, QUALITIES, TARGETS, type GenerationRequest } from "./ai3d";
+import { creditCost } from "@contracts/billing";
 
 const MAX_CONCURRENT = Number(process.env.AI_MAX_CONCURRENT ?? 3);
 const JOB_TIMEOUT_MS = 30 * 60 * 1000;
@@ -53,15 +55,26 @@ export function parseGlbStats(glb: Buffer): { vertices: number; triangles: numbe
  * Avvia il job in background; gli errori finiscono nel record (status=failed).
  * `safeName` include la cartella dell'utente: "<userId>/<nome>".
  */
-export function startAiJob(modelId: number, req: GenerationRequest, safeName: string): void {
+export function startAiJob(
+  modelId: number,
+  req: GenerationRequest,
+  safeName: string,
+  charge?: { userId: string; cost: number },
+): void {
   running++;
   void executeAiJob(modelId, req, safeName)
     .catch(async (err) => {
       const msg = (err instanceof Error ? err.message : String(err)).slice(0, 250);
       log.error("ai job failed", { modelId, error: msg });
+      // generazione non riuscita: i crediti tornano al cliente
+      if (charge) {
+        await addCredits(charge.userId, charge.cost, "rimborso", modelId, null).catch((e) =>
+          log.error("rimborso crediti fallito", { modelId, error: e instanceof Error ? e.message : String(e) }),
+        );
+      }
       await getDb()
         .update(models)
-        .set({ status: "failed", error: msg, stage: "Generazione non riuscita" })
+        .set({ status: "failed", error: msg, stage: charge ? "Non riuscita · crediti restituiti" : "Generazione non riuscita" })
         .where(eq(models.id, modelId))
         .catch(() => undefined);
     })
@@ -149,10 +162,19 @@ function fileIn(owned: string, folder: string, stamp: string, ext: string): stri
 /** Al boot: i job "processing" di un processo ormai morto vanno marcati falliti. */
 export async function sweepStaleAiJobs(): Promise<void> {
   try {
-    await getDb()
+    const stale = await getDb()
       .update(models)
-      .set({ status: "failed", error: "Generazione interrotta: il server è stato riavviato" })
-      .where(eq(models.status, "processing"));
+      .set({ status: "failed", error: "Generazione interrotta: il server è stato riavviato", stage: "Interrotta · crediti restituiti" })
+      .where(and(eq(models.status, "processing"), eq(models.mode, "ai")))
+      .returning({ id: models.id, userId: models.userId, quality: models.quality, target: models.target });
+    for (const m of stale) {
+      const cost = creditCost(
+        (QUALITIES as readonly string[]).includes(m.quality ?? "") ? (m.quality as (typeof QUALITIES)[number]) : "standard",
+        (TARGETS as readonly string[]).includes(m.target ?? "") ? (m.target as (typeof TARGETS)[number]) : "ecommerce",
+      );
+      await addCredits(m.userId, cost, "rimborso_riavvio", m.id, null).catch(() => undefined);
+    }
+    if (stale.length) log.info("lavori interrotti rimborsati", { count: stale.length });
   } catch (err) {
     // drizzle avvolge l'errore di Postgres: la causa vera (password, host, SSL…) è in err.cause
     const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;

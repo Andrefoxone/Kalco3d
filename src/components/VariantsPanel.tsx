@@ -5,6 +5,7 @@
 //    dichiarato in chiaro prima del clic).
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { handleNoCredits } from "@/lib/plansDialog";
 import { Loader2, Palette, RefreshCw, Sparkles } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { MATERIAL_PRESETS, findPresetId } from "@/lib/materialPresets";
@@ -74,6 +75,7 @@ export function VariantsPanel({ active, hasModel, material, onMaterial, exportGl
       });
       onQueued();
     } catch (err) {
+      if (handleNoCredits(err)) return;
       toast.error(err instanceof Error ? err.message : "Generazione della variante non riuscita");
     }
   }

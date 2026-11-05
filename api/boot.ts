@@ -9,6 +9,7 @@ import { log } from "./lib/logger";
 import { handleClientLog } from "./lib/clientlog";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
 import { sweepStaleAiJobs } from "./aiJob";
+import { processWebhook } from "./lib/billing";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -75,6 +76,12 @@ app.post(
   bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.body(null, 413) }),
   handleClientLog,
 );
+// Webhook Stripe: serve il corpo esatto per verificare la firma
+app.post("/api/stripe/webhook", bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.body(null, 413) }), async (c) => {
+  const raw = await c.req.text();
+  const { status, body } = await processWebhook(raw, c.req.header("stripe-signature"));
+  return c.text(body, status as 200 | 400 | 500);
+});
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 
 // Unhandled request errors must reach the app log file (LOG_FILE), not just stdout:

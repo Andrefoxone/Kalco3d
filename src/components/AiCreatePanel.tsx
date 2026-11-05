@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { loadPhoto, type LoadedPhoto } from "@/lib/photo";
 import { checkPhoto, pixelsFromCanvas, type PhotoCheck } from "@/lib/photoCheck";
+import { creditCost } from "@contracts/billing";
+import { handleNoCredits } from "@/lib/plansDialog";
 
 type View = "front" | "left" | "back" | "right";
 type Quality = "bozza" | "standard" | "pro";
@@ -135,10 +137,11 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
         quality,
         target,
       });
-      await utils.models.list.invalidate();
+      await Promise.all([utils.models.list.invalidate(), utils.billing.account.invalidate()]);
       toast.success("Generazione avviata: segui l'avanzamento in galleria");
       onQueued();
     } catch (err) {
+      if (handleNoCredits(err)) return;
       toast.error(err instanceof Error ? err.message : "Avvio della generazione fallito");
     } finally {
       setBusy(false);
@@ -249,6 +252,7 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
           <span className="flex items-center gap-2">
             <Sparkles className="size-4" />
             Genera il modello 3D
+            <span className="ml-1 border-l border-white/40 pl-2 tabular-nums">{creditCost(quality, target)} crediti</span>
           </span>
         )}
       </Button>

@@ -50,6 +50,16 @@ Le generazioni AI girano in background sul server per diversi minuti: serve un s
 3. Build `npm run build`, avvio `npm start` (già in `railway.json`). Railway assegna `PORT` da solo.
 4. Metti il dominio pubblico nelle *URL Configuration* di Supabase (punto 4 sopra).
 
+## Crediti e pagamenti (Stripe)
+
+- Ogni nuovo utente riceve 20 crediti. Costi: bozza 5, standard 8 (5 se «stampa»), Pro 15. Preparazione stampa gratis.
+- Piani: Maker 19 € / 150 crediti, Pro 49 € / 450, Studio 119 € / 1300 al mese. Ricarica 15 € / 100 crediti che non scadono.
+- Il saldo sta in `credit_accounts`, ogni movimento in `credit_ledger` (`supabase/migrations/0002_credits.sql`).
+- Il credito si scala prima di chiamare il motore AI e torna indietro se la generazione fallisce.
+- Massimo 2 generazioni contemporanee per utente.
+- I crediti si accreditano **solo** dal webhook firmato `POST /api/stripe/webhook`. Gli eventi richiesti sono `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated` e `customer.subscription.deleted`.
+- Le variabili `STRIPE_*` sono in `.env.example`. Senza queste variabili i pagamenti restano spenti.
+
 ## Comandi
 
 ```bash

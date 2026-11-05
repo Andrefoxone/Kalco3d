@@ -7,6 +7,9 @@ import { models } from "../../db/schema";
 import { storage } from "../lib/storage";
 import { buildGlb, buildMesh } from "../lib/glb";
 import { canStartAiJob, startAiJob } from "../aiJob";
+import { addCredits, spendCredits } from "../lib/credits";
+import { creditCost, MAX_JOBS_PER_USER } from "@contracts/billing";
+import { count } from "drizzle-orm";
 import {
   QUALITIES,
   TARGETS,
@@ -65,6 +68,30 @@ async function withUrls<
     previewUrl: r.previewKey ? (map.get(r.previewKey) ?? null) : null,
     providerLabel: r.provider ? providerLabel(r.provider) : null,
   }));
+}
+
+async function checkUserJobs(userId: string) {
+  const [r] = await getDb()
+    .select({ n: count() })
+    .from(models)
+    .where(and(eq(models.userId, userId), eq(models.status, "processing")));
+  if ((r?.n ?? 0) >= MAX_JOBS_PER_USER) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: `Hai già ${MAX_JOBS_PER_USER} generazioni in corso: aspetta che finisca una`,
+    });
+  }
+}
+
+/** Scala i crediti, esegue start(); se l'avvio fallisce restituisce i crediti. */
+async function withCharge<T>(userId: string, cost: number, start: () => Promise<T>): Promise<T> {
+  await spendCredits(userId, cost, "generazione");
+  try {
+    return await start();
+  } catch (err) {
+    await addCredits(userId, cost, "rimborso_avvio", null, null).catch(() => undefined);
+    throw err;
+  }
 }
 
 export const modelsRouter = createRouter({
@@ -212,6 +239,9 @@ export const modelsRouter = createRouter({
           message: "Altre generazioni AI sono in corso: riprova tra qualche minuto",
         });
       }
+      await checkUserJobs(ctx.user.id);
+      const cost = creditCost(input.quality, input.target);
+      return withCharge(ctx.user.id, cost, async () => {
       const safeName =
         input.name.replace(/[^\p{L}\p{N} _.'-]/gu, "").trim().slice(0, 80) || "modello";
       const front = images.find((i) => i.view === "front")!;
@@ -241,11 +271,12 @@ export const modelsRouter = createRouter({
         })
         .returning({ id: models.id });
       const id = inserted[0]?.id;
-      startAiJob(id, { images, quality: input.quality, target: input.target }, `${ctx.user.id}/${safeName}`);
+      startAiJob(id, { images, quality: input.quality, target: input.target }, `${ctx.user.id}/${safeName}`, { userId: ctx.user.id, cost });
       const row = await getDb().query.models.findFirst({ where: eq(models.id, id) });
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const [withUrl] = await withUrls([row]);
       return withUrl;
+      });
     }),
 
   // Variante di forma via AI: riusa la foto originale del modello e lancia una
@@ -303,6 +334,9 @@ export const modelsRouter = createRouter({
       const target = TARGETS.includes(parent.target as (typeof TARGETS)[number])
         ? (parent.target as (typeof TARGETS)[number])
         : "ecommerce";
+      await checkUserJobs(ctx.user.id);
+      const cost = creditCost(input.quality ?? quality, input.target ?? target);
+      return withCharge(ctx.user.id, cost, async () => {
       const base = parent.name.replace(/\s*—\s*variante.*$/i, "").trim().slice(0, 56) || "modello";
       const siblings = await getDb()
         .select({ id: models.id })
@@ -337,11 +371,13 @@ export const modelsRouter = createRouter({
           target: input.target ?? target,
         },
         `${ctx.user.id}/${name.replace(/[^\p{L}\p{N} _.'-]/gu, "")}`,
+        { userId: ctx.user.id, cost },
       );
       const row = await getDb().query.models.findFirst({ where: eq(models.id, id) });
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const [withUrl] = await withUrls([row]);
       return withUrl;
+      });
     }),
 
   download: authedQuery
