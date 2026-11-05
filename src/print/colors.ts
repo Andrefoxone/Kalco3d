@@ -112,6 +112,31 @@ export function quantizeColors(colors: Float32Array, weights: Float32Array, k: n
     const a = acc[labels[i]];
     a[0] += colors[i * 3] * w; a[1] += colors[i * 3 + 1] * w; a[2] += colors[i * 3 + 2] * w; a[3] += w;
   }
+  // colori quasi uguali (due neri, due marroni) non meritano due filamenti:
+  // si fondono i gruppi più vicini di MIN_DELTA_E nello spazio Lab
+  const MIN_DELTA_E = 18;
+  const parent = Array.from({ length: K }, (_, i) => i);
+  const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x])));
+  const labOf = (a: number[]) => rgbToLab([a[0] / a[3], a[1] / a[3], a[2] / a[3]]);
+  for (;;) {
+    let bestPair: [number, number] | null = null;
+    let bestD = MIN_DELTA_E;
+    const roots = [...new Set(Array.from({ length: K }, (_, i) => find(i)))].filter((r) => acc[r][3] > 0);
+    for (let x = 0; x < roots.length; x++) {
+      for (let y = x + 1; y < roots.length; y++) {
+        const la = labOf(acc[roots[x]]), lb = labOf(acc[roots[y]]);
+        const d = Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
+        if (d < bestD) { bestD = d; bestPair = [roots[x], roots[y]]; }
+      }
+    }
+    if (!bestPair) break;
+    const [keep, drop] = bestPair;
+    for (let c = 0; c < 4; c++) acc[keep][c] += acc[drop][c];
+    acc[drop] = [0, 0, 0, 0];
+    parent[drop] = keep;
+  }
+  for (let i = 0; i < n; i++) labels[i] = find(labels[i]);
+
   // ordina per area (filamento 1 = colore principale) ed elimina gruppi vuoti
   const order = acc.map((a, i) => ({ i, w: a[3] })).filter((x) => x.w > 0).sort((a, b) => b.w - a.w);
   const remap = new Int32Array(K).fill(-1);

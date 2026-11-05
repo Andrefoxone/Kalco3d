@@ -161,7 +161,17 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
     tracked = m.tracked;
     if (m.warning) warnings.push(m.warning);
   } else if (opts.base) {
-    if (opts.baseColor === "nuovo" || (opts.baseColor === undefined && palette.length > 1)) {
+    if (opts.baseColor === undefined && palette.length >= 4) {
+      // un AMS ha 4 slot: la base usa il colore più scuro già presente
+      // invece di chiedere un quinto filamento
+      let dark = 0, darkL = Infinity;
+      palette.forEach((hex, i) => {
+        const v = parseInt(hex.slice(1), 16);
+        const l = 0.2126 * ((v >> 16) & 255) + 0.7152 * ((v >> 8) & 255) + 0.0722 * (v & 255);
+        if (l < darkL) { darkL = l; dark = i; }
+      });
+      baseLabel = dark;
+    } else if (opts.baseColor === "nuovo" || (opts.baseColor === undefined && palette.length > 1)) {
       baseLabel = palette.length;
       palette = [...palette, "#2b2b2e"];
     } else if (typeof opts.baseColor === "number") {

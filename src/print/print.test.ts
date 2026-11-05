@@ -276,3 +276,16 @@ describe("modelli non riparabili (stile AI)", () => {
     expect(new Set(out.placed[0].mesh.label).size).toBe(2);
   }, 60_000);
 });
+
+describe("filamenti", () => {
+  it("fonde colori quasi uguali e con 4 colori la base riusa il più scuro", async () => {
+    // quattro fasce: due neri quasi identici, rosso, blu, giallo
+    const sphere = soupOf(new THREE.SphereGeometry(1, 48, 32), (c) =>
+      c.y > 0.5 ? [0.05, 0.05, 0.04] : c.y > 0 ? [0.17, 0.17, 0.18] : c.y > -0.5 ? [0.85, 0.1, 0.1] : c.x > 0 ? [0.1, 0.2, 0.85] : [0.95, 0.85, 0.1],
+    );
+    const out = await preparePrint(sphere, { longestMm: 60, colors: 5, base: { shape: "tonda", heightMm: 4 }, plate: PLATE, name: "Fasce" });
+    // i due neri diventano uno: nero, rosso, blu, giallo = 4, e la base non aggiunge il quinto
+    expect(out.palette).toHaveLength(4);
+    expect(out.report.warnings.join(" ")).not.toMatch(/più AMS/);
+  });
+});
