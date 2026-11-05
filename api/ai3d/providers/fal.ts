@@ -69,7 +69,9 @@ export const falHunyuanProvider: Provider = {
   id: "fal-hunyuan",
   label: "Hunyuan3D 3.1 Pro",
   maxViews: 4,
-  available: () => Boolean(key()),
+  // Spento finché non è chiarita la licenza per l'UE (la licenza open source
+  // Tencent esclude UE, Regno Unito e Corea del Sud). Riattivabile con ENABLE_HUNYUAN=1.
+  available: () => Boolean(key()) && process.env.ENABLE_HUNYUAN === "1",
   async generate(req, onProgress, signal) {
     onProgress(2, "Invio foto");
     const input = falHunyuanInput(req.quality, req.target, urls(req));
