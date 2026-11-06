@@ -5,12 +5,13 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { ArrowLeft, Building2, Download, FileText, Loader2, TriangleAlert, Upload } from "lucide-react";
+import { ArrowLeft, Building2, Download, FileText, LayoutPanelTop, Loader2, TriangleAlert, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Slider } from "@/components/ui/slider";
 import { trpc } from "@/providers/trpc";
 import { BuildingView, type ViewLayer, type ViewPiece } from "@/components/building/BuildingView";
+import { PlanDialog } from "@/components/building/PlanDialog";
 import { CAD_ACCEPT, importCadFile } from "@/lib/cadImport";
 import { extractPrintInput } from "@/print/sceneSample";
 import type { PrintInput } from "@/print/pipeline";
@@ -108,6 +109,7 @@ export default function Building() {
   const [result, setResult] = useState<Result | null>(null);
   const [sel, setSel] = useState(0);
   const [upTo, setUpTo] = useState(-1);
+  const [planOpen, setPlanOpen] = useState(false);
 
   const dims = useMemo(() => {
     if (!src) return null;
@@ -324,6 +326,16 @@ export default function Building() {
   return (
     <div className="flex h-dvh flex-col bg-[#f7f7f5] font-mono text-[#171717]">
       <Toaster />
+      <PlanDialog
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        onWalls={({ name, soup, heightM: h }) => {
+          setSrc({ name: `${name} · muri`, input: { soup }, size: sizeOfSoup(soup) });
+          setHeightM(h);
+          setResult(null);
+          setUpTo(-1);
+        }}
+      />
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#e4e4e4] px-4 lg:px-6">
         <div className="flex items-baseline gap-2.5">
           <span className="inline-block size-2.5 rounded-full bg-[#ff670d]" aria-hidden="true" />
@@ -408,10 +420,17 @@ export default function Building() {
                   }}
                 />
               </label>
+              <button
+                type="button"
+                onClick={() => setPlanOpen(true)}
+                className="flex items-center justify-center gap-2 border border-[#ff670d] px-2 py-2 text-xs text-[#ff670d] hover:bg-[#ff670d] hover:text-white"
+              >
+                <LayoutPanelTop className="size-3.5" /> Dalla pianta ai muri (immagine)
+              </button>
               {loading && <p className="flex items-center gap-2 text-xs text-[#525252]"><Loader2 className="size-3.5 animate-spin" /> Apro il modello…</p>}
               {src && !loading && (
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="mr-auto">Modello: <b>{src.name}</b></span>
+                  <span className="mr-auto basis-full">Modello: <b>{src.name}</b></span>
                   <button type="button" onClick={() => rotate("x")} className="border border-[#d4d4d4] px-2 py-1 hover:bg-[#f2f2f2]">Alza / corica 90°</button>
                   <button type="button" onClick={() => rotate("z")} className="border border-[#d4d4d4] px-2 py-1 hover:bg-[#f2f2f2]">Gira 90°</button>
                 </div>

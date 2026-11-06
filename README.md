@@ -56,7 +56,7 @@ Grandi stampe 3D: cemento (portale, gru), pellet o bracci robot, oppure stampant
 - Modello dalla galleria o da file (STL, OBJ, GLB, STEP, DXF…), rotazioni di 90°, altezza reale in metri.
 - `src/building/engine.ts`: strati con Manifold, perimetri e zig-zag, sbalzi oltre l'angolo ammesso, preventivo (materiale, tempo, costi) e G-code generico (G0/G1, E volumetrico opzionale).
 - Se il modello non entra nella macchina: pezzi numerati dal basso con perni (`splitToPlate`), STL dei pezzi e pagina di montaggio.
-- Fase 2 (da fare): dalla pianta DWG/immagine ai muri stampabili.
+- Dalla pianta (immagine) ai muri: `src/building/plan.ts` tiene le zone spesse del disegno (apertura morfologica con la trasformata di distanza), scarta mobili e testi, lascia i varchi di porte e finestre; scala da larghezza totale o misura nota; muri estrusi all'altezza scelta. Da fare: piante DWG/DXF.
 
 ## Immagini da testo (FLUX.2)
 
