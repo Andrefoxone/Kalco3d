@@ -639,6 +639,7 @@ export default function Home() {
                   sizeMm={sizeMm}
                   onSizeMm={setSizeMm}
                   getInput={() => viewportRef.current?.getPrintInput() ?? null}
+                  modelSize={printReport?.size ?? null}
                 />
               </TabsContent>
               <TabsContent value="galleria" className="m-0">

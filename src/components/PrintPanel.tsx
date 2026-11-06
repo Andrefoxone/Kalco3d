@@ -1,6 +1,7 @@
 // Pannello "Stampa 3D": dal modello nel viewport a un 3MF pronto per lo
 // slicer, con riparazione, colori per filamento, base e taglio per il piatto.
 import { useState } from "react";
+import { dimsMm, fmtMm, longestFor, valueFor, type Axis, type SceneSize } from "@/print/dimensions";
 import { CircleAlert, CircleCheck, Download, Gift, Loader2, Magnet, PawPrint, Printer, User } from "lucide-react";
 import { toast } from "sonner";
 import { Slider } from "@/components/ui/slider";
@@ -43,6 +44,8 @@ interface Props {
   sizeMm: number;
   onSizeMm: (mm: number) => void;
   getInput: () => PrintInput | null;
+  /** ingombro del modello nella scena (Y in alto), per le misure reali */
+  modelSize: SceneSize | null;
 }
 
 function download(data: Uint8Array, name: string, type = "model/3mf") {
@@ -57,7 +60,8 @@ function download(data: Uint8Array, name: string, type = "model/3mf") {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput }: Props) {
+export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput, modelSize }: Props) {
+  const [axis, setAxis] = useState<Axis>("altezza");
   const [printerId, setPrinterId] = useState("bambu256");
   const [custom, setCustom] = useState<Plate>({ x: 200, y: 200, z: 200 });
   const [colors, setColors] = useState(4);
@@ -200,8 +204,14 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput }: Props
         )}
       </Field>
 
-      <Field label={`Altezza / lato più lungo: ${sizeMm} mm`}>
-        <Slider value={[sizeMm]} min={20} max={600} step={1} onValueChange={(v) => { onSizeMm(v[0]); setTemplate(null); }} aria-label="Lato più lungo in millimetri" />
+      <Field label="Misure reali">
+        <SizeControl
+          size={modelSize}
+          axis={axis}
+          onAxis={setAxis}
+          longestMm={sizeMm}
+          onLongest={(mm) => { onSizeMm(Math.round(Math.min(600, Math.max(10, mm)) * 10) / 10); setTemplate(null); }}
+        />
       </Field>
 
       <Field label={colors === 1 ? "Colori: monocolore" : `Colori: ${colors} filamenti`}>
@@ -395,6 +405,85 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[#525252]">{label}</div>
       {children}
+    </div>
+  );
+}
+
+const AXES: { id: Axis; label: string }[] = [
+  { id: "altezza", label: "Altezza" },
+  { id: "larghezza", label: "Larghezza" },
+  { id: "profondita", label: "Profondità" },
+  { id: "lungo", label: "Lato lungo" },
+];
+
+/** Una misura nota (es. alta 120 mm) → scala; sotto, le tre misure risultanti. */
+function SizeControl({
+  size,
+  axis,
+  onAxis,
+  longestMm,
+  onLongest,
+}: {
+  size: SceneSize | null;
+  axis: Axis;
+  onAxis: (a: Axis) => void;
+  longestMm: number;
+  onLongest: (mm: number) => void;
+}) {
+  const s = size ?? { x: 1, y: 1, z: 1 };
+  const value = valueFor(s, axis, longestMm);
+  const [draft, setDraft] = useState<string | null>(null);
+  const d = dimsMm(s, longestMm);
+  const commit = (raw: string) => {
+    const v = Number(raw.replace(",", "."));
+    if (v > 0) onLongest(longestFor(s, axis, v));
+    setDraft(null);
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-4 border border-[#d4d4d4]">
+        {AXES.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            aria-pressed={axis === a.id}
+            onClick={() => onAxis(a.id)}
+            className={`px-1 py-2 text-[10px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff670d] ${
+              axis === a.id ? "bg-[#171717] text-white" : "text-[#6f6f6f] hover:bg-[#ededed]"
+            }`}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-3">
+        <Slider
+          value={[value]}
+          min={10}
+          max={Math.max(50, valueFor(s, axis, 600))}
+          step={1}
+          onValueChange={(v) => onLongest(longestFor(s, axis, v[0]))}
+          aria-label={`${AXES.find((a) => a.id === axis)!.label} in millimetri`}
+          className="flex-1"
+        />
+        <label className="flex items-center gap-1 text-xs text-[#525252]">
+          <input
+            inputMode="decimal"
+            value={draft ?? fmtMm(value)}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") commit((e.target as HTMLInputElement).value); }}
+            className="h-8 w-16 border border-[#d4d4d4] bg-transparent px-1.5 text-right text-sm tabular-nums focus-visible:border-[#ff670d] focus-visible:outline-none"
+            aria-label="Misura in millimetri"
+          />
+          mm
+        </label>
+      </div>
+      <p className="text-[11px] tabular-nums text-[#3f3f3c]">
+        {size
+          ? <>L {fmtMm(d.larghezza)} × P {fmtMm(d.profondita)} × A {fmtMm(d.altezza)} mm <span className="text-[#6f6f6f]">(senza base)</span></>
+          : "Le misure compaiono quando il modello è caricato"}
+      </p>
     </div>
   );
 }
