@@ -39,3 +39,10 @@ export function creditCost(quality: "bozza" | "standard" | "pro", target: "ecomm
   if (quality === "pro") return 15;
   return target === "stampa" ? 5 : 8;
 }
+
+/** Immagini da testo (FLUX.2 pro, ~0,03 $ l'una): 1 credito ogni 2 immagini, arrotondato in su. */
+export const IMAGE_STYLES = ["realistico", "statuina", "giocattolo", "scultura"] as const;
+export type ImageStyle = (typeof IMAGE_STYLES)[number];
+export function imageCreditCost(count: number): number {
+  return Math.max(1, Math.ceil(count / 2));
+}

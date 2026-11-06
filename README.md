@@ -50,6 +50,12 @@ Le generazioni AI girano in background sul server per diversi minuti: serve un s
 3. Build `npm run build`, avvio `npm start` (già in `railway.json`). Railway assegna `PORT` da solo.
 4. Metti il dominio pubblico nelle *URL Configuration* di Supabase (punto 4 sopra).
 
+## Immagini da testo (FLUX.2)
+
+- Nella scheda AI, «Creala dal testo»: l'utente descrive l'oggetto e FLUX.2 [pro] su fal crea 1–4 immagini (`api/lib/imageGen.ts`).
+- Il prompt viene avvolto in una ricetta per il 3D: un solo oggetto, intero, centrato, fondo neutro; per la stampa niente parti sottili.
+- L'immagine scelta diventa la foto frontale. Costo: 1 credito ogni 2 immagini, rimborsato per quelle fallite. Serve `FAL_KEY`.
+
 ## Crediti e pagamenti (Stripe)
 
 - Ogni nuovo utente riceve 20 crediti. Costi: bozza 5, standard 8 (5 se «stampa»), Pro 15. Preparazione stampa gratis.

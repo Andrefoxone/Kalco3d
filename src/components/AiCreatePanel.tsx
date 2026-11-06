@@ -24,6 +24,7 @@ import { loadPhoto, type LoadedPhoto } from "@/lib/photo";
 import { checkPhoto, pixelsFromCanvas, type PhotoCheck } from "@/lib/photoCheck";
 import { creditCost } from "@contracts/billing";
 import { handleNoCredits } from "@/lib/plansDialog";
+import { TextToImage } from "@/components/TextToImage";
 
 type View = "front" | "left" | "back" | "right";
 type Quality = "bozza" | "standard" | "pro";
@@ -84,6 +85,7 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [override, setOverride] = useState(false);
+  const [source, setSource] = useState<"foto" | "testo">("foto");
   const utils = trpc.useUtils();
   const isAdmin = trpc.billing.account.useQuery(undefined, { staleTime: 15_000 }).data?.admin ?? false;
   const generateAi = trpc.models.generateAi.useMutation();
@@ -154,9 +156,42 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
       <div>
         <h2 className="font-display text-xl leading-tight tracking-tight text-[#171717]">Dalla foto al 3D</h2>
         <p className="mt-1 text-xs leading-relaxed text-[#525252]">
-          Basta una foto frontale. Aggiungere lato e retro rende fedele anche la parte che non si vede.
+          {source === "foto"
+            ? "Basta una foto frontale. Aggiungere lato e retro rende fedele anche la parte che non si vede."
+            : "Non hai una foto? Descrivi l'oggetto: creiamo l'immagine e poi il modello 3D."}
         </p>
       </div>
+
+      <div className="grid grid-cols-2 border border-[#d4d4d4]" role="tablist" aria-label="Da dove parti">
+        {([
+          ["foto", "Ho una foto"],
+          ["testo", "Creala dal testo"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={source === id}
+            onClick={() => setSource(id)}
+            className={`px-2 py-2 text-xs uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff670d] ${
+              source === id ? "bg-[#171717] text-white" : "text-[#6f6f6f] hover:bg-[#ededed]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {source === "testo" && (
+        <TextToImage
+          forPrint={target === "stampa"}
+          isAdmin={isAdmin}
+          onPick={(file, prompt) => {
+            if (!name) setName(prompt.trim().slice(0, 60));
+            void setSlot("front", file);
+          }}
+        />
+      )}
 
       {/* foto */}
       <div className="grid grid-cols-3 gap-2">
