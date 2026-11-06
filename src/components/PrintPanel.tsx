@@ -65,6 +65,8 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput }: Props
   const [baseH, setBaseH] = useState(4);
   const [magnet, setMagnet] = useState(false);
   const [connectors, setConnectors] = useState(true);
+  const [nozzle, setNozzle] = useState(0.4);
+  const [reinforce, setReinforce] = useState(true);
   const [template, setTemplate] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState("");
@@ -104,6 +106,8 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput }: Props
           base: base === "nessuna" || magnet ? null : { shape: base, heightMm: baseH },
           magnet: magnet ? MAGNET : null,
           connectors,
+          nozzleMm: nozzle,
+          reinforce,
           plate,
           name: name || "modello",
         },
@@ -242,6 +246,39 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput }: Props
         )}
       </Field>
 
+      <Field label={`Ugello: ${String(nozzle).replace(".", ",")} mm · parete minima ${String(Math.round(nozzle * 200) / 100).replace(".", ",")} mm`}>
+        <div className="grid grid-cols-4 border border-[#d4d4d4]">
+          {[0.2, 0.4, 0.6, 0.8].map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={nozzle === n}
+              onClick={() => setNozzle(n)}
+              className={`px-1 py-2 text-[11px] tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff670d] ${
+                nozzle === n ? "bg-[#171717] text-white" : "text-[#6f6f6f] hover:bg-[#ededed]"
+              }`}
+            >
+              {String(n).replace(".", ",")}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-snug text-[#171717]">
+        <input
+          type="checkbox"
+          checked={reinforce}
+          onChange={(e) => setReinforce(e.target.checked)}
+          className="mt-0.5 size-4 accent-[#ff670d]"
+        />
+        <span>
+          Rinforza le parti sottili
+          <span className="block text-[11px] text-[#6f6f6f]">
+            Ispessisce solo le pareti più sottili di quanto l'ugello riesce a stampare: antenne, dita, orecchie non spariscono più.
+          </span>
+        </span>
+      </label>
+
       <label className="flex cursor-pointer items-start gap-2.5 text-xs leading-snug text-[#171717]">
         <input
           type="checkbox"
@@ -301,7 +338,19 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput }: Props
               ) : (
                 <CircleCheck className="size-3.5 text-emerald-600" />
               )}
-              Parete più sottile ≈ {Number.isFinite(result.report.wall.minMm) ? result.report.wall.minMm.toFixed(1) : "–"} mm
+              Parete più sottile ≈ {Number.isFinite(result.report.wall.minMm) ? result.report.wall.minMm.toFixed(1).replace(".", ",") : "–"} mm
+              {result.report.reinforced.applied && " · parti sottili rinforzate"}
+            </li>
+            <li className="flex items-center gap-1.5">
+              {result.report.fragments.detached > 0 ? (
+                <CircleAlert className="size-3.5 text-amber-600" />
+              ) : (
+                <CircleCheck className="size-3.5 text-emerald-600" />
+              )}
+              {result.report.fragments.detached > 0
+                ? `${result.report.fragments.detached} ${result.report.fragments.detached === 1 ? "parte staccata" : "parti staccate"}`
+                : "Un solo corpo, nessuna parte staccata"}
+              {result.report.fragments.removed > 0 && ` · ${result.report.fragments.removed} briciole tolte`}
             </li>
           </ul>
           {result.report.warnings.length > 0 && (

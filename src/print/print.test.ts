@@ -289,3 +289,54 @@ describe("filamenti", () => {
     expect(out.report.warnings.join(" ")).not.toMatch(/più AMS/);
   });
 });
+
+describe("stampabilità vera", () => {
+  it("toglie le briciole staccate e rinforza una pinna troppo sottile", async () => {
+    const { getManifold } = await import("./manifold");
+    const { removeFragments, reinforceThin, minWallMm } = await import("./strength");
+    const w = await getManifold();
+    // corpo 20 mm + pinna da 0,3 mm + briciola da 0,2 mm³ staccata
+    const body = w.Manifold.cube([20, 20, 20], true);
+    const fin = w.Manifold.cube([10, 0.3, 10], true).translate([10 + 4.9, 0, 0]);
+    const crumb = w.Manifold.cube([0.5, 0.5, 0.8], true).translate([40, 0, 0]);
+    const solid = w.Manifold.union([body, fin, crumb]);
+    const tracked = { solid, modelRun: solid.getMesh().runOriginalID[0], baseRun: null };
+
+    const f = removeFragments(w, tracked);
+    expect(f.report.removed).toBe(1);
+    expect(f.report.detached).toBe(0);
+    expect(f.tracked.solid.decompose()).toHaveLength(1);
+
+    expect(minWallMm(0.4)).toBe(0.8);
+    const before = f.tracked.solid.volume();
+    const r = reinforceThin(w, f.tracked, 0.8);
+    expect(r.report.applied).toBe(true);
+    expect(r.tracked.solid.status()).toBe("NoError");
+    expect(r.report.maxPushMm).toBeLessThanOrEqual(0.4 + 1e-6);
+    // la pinna si ispessisce, il cubo grande no: il volume cresce poco
+    const after = r.tracked.solid.volume();
+    expect(after).toBeGreaterThan(before);
+    expect(after - before).toBeLessThan(150);
+    expect(r.report.share).toBeLessThan(0.5);
+  });
+
+  it("il rinforzo mantiene i colori nel percorso completo", async () => {
+    // disco sottile (0,5 mm su 60 mm) a due colori: va rinforzato
+    const disc = soupOf(new THREE.CylinderGeometry(1, 1, 0.5 / 60, 64, 1), (c) => (c.x > 0 ? [0.9, 0.2, 0.1] : [0.1, 0.2, 0.9]));
+    const out = await preparePrint(disc, { longestMm: 60, colors: 2, base: null, plate: PLATE, name: "Disco" });
+    expect(out.report.reinforced.applied).toBe(true);
+    expect(out.report.nozzleMm).toBe(0.4);
+    const labels = new Set(out.placed[0].mesh.label);
+    expect(labels.size).toBe(2);
+    expect(analyzePrintability(pieceToMesh(out.placed[0])).watertight).toBe(true);
+  });
+
+  it("nessun rinforzo se le pareti sono già spesse", async () => {
+    const { getManifold } = await import("./manifold");
+    const { reinforceThin } = await import("./strength");
+    const w = await getManifold();
+    const solid = w.Manifold.cube([10, 10, 10], true);
+    const r = reinforceThin(w, { solid, modelRun: 0, baseRun: null }, 0.8);
+    expect(r.report.applied).toBe(false);
+  });
+});

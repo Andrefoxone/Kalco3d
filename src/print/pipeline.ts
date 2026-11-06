@@ -29,6 +29,7 @@ import {
 import { build3mf, build3mfPerPlate } from "./threemf";
 import { voxelRemesh } from "./remesh";
 import { wallThickness, type WallReport } from "./wall";
+import { minWallMm, reinforceThin, removeFragments, type FragmentReport, type ReinforceReport } from "./strength";
 
 export interface PrintInput {
   /** triangoli in coordinate scena (Y in alto), 9 valori per triangolo */
@@ -50,6 +51,10 @@ export interface PrintOptions {
   connectors?: boolean;
   /** calamita da frigo: retro piatto con sede per il magnete (esclude la base) */
   magnet?: MagnetOptions | null;
+  /** diametro dell'ugello, mm (predefinito 0,4): la parete minima è il doppio */
+  nozzleMm?: number;
+  /** ispessisce le pareti troppo sottili (predefinito: sì) */
+  reinforce?: boolean;
 }
 
 export interface PrintReport {
@@ -65,6 +70,9 @@ export interface PrintReport {
   fitsPlate: boolean;
   volumeCm3: number;
   wall: WallReport;
+  fragments: FragmentReport;
+  reinforced: ReinforceReport;
+  nozzleMm: number;
   warnings: string[];
 }
 
@@ -153,6 +161,36 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
     );
   }
 
+  onStage("Controllo delle parti staccate");
+  await tick();
+  const frag = removeFragments(w, tracked);
+  tracked = frag.tracked;
+  if (frag.report.removed > 0) {
+    warnings.push(`Tolti ${frag.report.removed} ${frag.report.removed === 1 ? "frammento staccato troppo piccolo" : "frammenti staccati troppo piccoli"} per essere stampati`);
+  }
+  if (frag.report.detached > 0) {
+    warnings.push(
+      `${frag.report.detached} ${frag.report.detached === 1 ? "parte è staccata" : "parti sono staccate"} dal corpo principale: ${opts.base ? "se non toccano la base, " : ""}lo slicer ${frag.report.detached === 1 ? "la stampa" : "le stampa"} come pezzi separati con i supporti`,
+    );
+  }
+
+  const nozzleMm = opts.nozzleMm ?? 0.4;
+  const minWall = minWallMm(nozzleMm);
+  let reinforced: ReinforceReport = { share: 0, maxPushMm: 0, applied: false };
+  if (opts.reinforce !== false) {
+    onStage("Rinforzo delle parti sottili");
+    await tick();
+    const r = reinforceThin(w, tracked, minWall);
+    tracked = r.tracked;
+    reinforced = r.report;
+    if (reinforced.applied) {
+      const pct = reinforced.share * 100;
+      warnings.push(
+        `Rinforzate le parti sottili (${pct < 1 ? "meno dell'1" : Math.round(pct)}% della superficie, al massimo +${reinforced.maxPushMm.toFixed(2).replace(".", ",")} mm per lato) per arrivare a ${String(minWall).replace(".", ",")} mm con l'ugello da ${String(nozzleMm).replace(".", ",")}`,
+      );
+    }
+  }
+
   let baseLabel = 0;
   if (opts.magnet) {
     onStage("Retro piatto e sede del magnete");
@@ -210,10 +248,12 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
   await tick();
   // spessore misurato sul pezzo più grande (di solito rappresentativo)
   const biggest = (pieces.length ? pieces : pins).reduce((a, b) => (b.tri.length > a.tri.length ? b : a));
-  const wall = wallThickness(biggest);
+  const wall = wallThickness(biggest, minWall);
   if (wall.thinShare > 0.02) {
     warnings.push(
-      `Pareti sottili: il ${Math.round(wall.thinShare * 100)}% della superficie è sotto ${wall.thresholdMm} mm. Ingrandisci la stampa o rinforza quei punti`,
+      reinforced.applied
+        ? `Restano pareti sottili sul ${Math.round(wall.thinShare * 100)}% della superficie (sotto ${String(wall.thresholdMm).replace(".", ",")} mm): ingrandisci la stampa o usa un ugello più fine`
+        : `Pareti sottili: il ${Math.round(wall.thinShare * 100)}% della superficie è sotto ${String(wall.thresholdMm).replace(".", ",")} mm. Attiva il rinforzo, ingrandisci la stampa o usa un ugello più fine`,
     );
   }
   if (filled.skipped > 0 && !rebuilt) warnings.push(`${filled.skipped} buchi complessi non chiusi automaticamente`);
@@ -239,6 +279,9 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
       fitsPlate: fits,
       volumeCm3,
       wall,
+      fragments: frag.report,
+      reinforced,
+      nozzleMm,
       warnings,
     },
   };
