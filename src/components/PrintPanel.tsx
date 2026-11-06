@@ -1,6 +1,7 @@
 // Pannello "Stampa 3D": dal modello nel viewport a un 3MF pronto per lo
 // slicer, con riparazione, colori per filamento, base e taglio per il piatto.
 import { useState } from "react";
+import type { DecorMode, FontId } from "@/print/decor";
 import { dimsMm, fmtMm, longestFor, valueFor, type Axis, type SceneSize } from "@/print/dimensions";
 import { CircleAlert, CircleCheck, Download, Gift, Loader2, Magnet, PawPrint, Printer, User } from "lucide-react";
 import { toast } from "sonner";
@@ -71,6 +72,11 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput, modelSi
   const [connectors, setConnectors] = useState(true);
   const [nozzle, setNozzle] = useState(0.4);
   const [reinforce, setReinforce] = useState(true);
+  const [decorText, setDecorText] = useState("");
+  const [decorFont, setDecorFont] = useState<FontId>("moderno");
+  const [decorMode, setDecorMode] = useState<DecorMode>("rilievo");
+  const [decorContrast, setDecorContrast] = useState(true);
+  const [logo, setLogo] = useState<{ name: string; svg: string } | null>(null);
   const [template, setTemplate] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState("");
@@ -112,6 +118,10 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput, modelSi
           connectors,
           nozzleMm: nozzle,
           reinforce,
+          decor:
+            base !== "nessuna" && !magnet && (decorText.trim() || logo)
+              ? { text: decorText, font: decorFont, logoSvg: logo?.svg ?? null, mode: decorMode, color: decorContrast ? "contrasto" : "base" }
+              : null,
           plate,
           name: name || "modello",
         },
@@ -255,6 +265,88 @@ export function PrintPanel({ hasModel, name, sizeMm, onSizeMm, getInput, modelSi
         </>
         )}
       </Field>
+
+      {base !== "nessuna" && !magnet && (
+        <Field label="Testo e logo sulla base">
+          <div className="flex flex-col gap-2">
+            <input
+              value={decorText}
+              onChange={(e) => setDecorText(e.target.value)}
+              maxLength={40}
+              placeholder="Es. un nome, una data, «Bar Roma»"
+              className="h-9 w-full border border-[#d4d4d4] bg-transparent px-2 text-sm focus-visible:border-[#ff670d] focus-visible:outline-none"
+              aria-label="Testo sulla base"
+            />
+            <div className="grid grid-cols-3 border border-[#d4d4d4]">
+              {([
+                ["moderno", "Moderno", "font-sans font-extrabold"],
+                ["classico", "Classico", "font-serif font-bold"],
+                ["corsivo", "Corsivo", "italic"],
+              ] as const).map(([id, label, cls]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={decorFont === id}
+                  onClick={() => setDecorFont(id)}
+                  className={`px-1 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff670d] ${cls} ${
+                    decorFont === id ? "bg-[#171717] text-white" : "text-[#3f3f3c] hover:bg-[#ededed]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              {logo ? (
+                <span className="flex min-w-0 flex-1 items-center justify-between gap-2 border border-[#d4d4d4] px-2 py-1.5 text-xs">
+                  <span className="truncate">Logo: {logo.name}</span>
+                  <button type="button" onClick={() => setLogo(null)} className="shrink-0 text-[11px] uppercase tracking-widest text-[#ff670d] hover:underline">
+                    Togli
+                  </button>
+                </span>
+              ) : (
+                <label className="flex flex-1 cursor-pointer items-center justify-center border border-dashed border-[#bdbdbd] px-2 py-1.5 text-xs text-[#525252] hover:bg-[#f2f2f2]">
+                  Aggiungi logo (SVG)
+                  <input
+                    type="file"
+                    accept=".svg,image/svg+xml"
+                    className="sr-only"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      if (f.size > 1_000_000) return void toast.error("SVG troppo grande (max 1 MB)");
+                      const svg = await f.text();
+                      if (!/<svg[\s>]/i.test(svg)) return void toast.error("Il file non è un SVG");
+                      setLogo({ name: f.name, svg });
+                    }}
+                  />
+                </label>
+              )}
+              <div className="grid grid-cols-2 border border-[#d4d4d4]">
+                {(["rilievo", "incisione"] as DecorMode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={decorMode === m}
+                    onClick={() => setDecorMode(m)}
+                    className={`px-2 py-1.5 text-[11px] uppercase tracking-wider ${decorMode === m ? "bg-[#171717] text-white" : "text-[#6f6f6f] hover:bg-[#ededed]"}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-[#171717]">
+              <input type="checkbox" checked={decorContrast} onChange={(e) => setDecorContrast(e.target.checked)} className="size-4 accent-[#ff670d]" />
+              Colore a contrasto (un filamento in più)
+            </label>
+            <p className="text-[11px] text-[#6f6f6f]">
+              Scritte e loghi nitidi, costruiti come geometria vera davanti al modello. Il logo deve avere forme piene.
+            </p>
+          </div>
+        </Field>
+      )}
 
       <Field label={`Ugello: ${String(nozzle).replace(".", ",")} mm · parete minima ${String(Math.round(nozzle * 200) / 100).replace(".", ",")} mm`}>
         <div className="grid grid-cols-4 border border-[#d4d4d4]">

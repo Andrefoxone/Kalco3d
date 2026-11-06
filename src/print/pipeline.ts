@@ -21,6 +21,7 @@ import {
   splitToPlate,
   toManifold,
   toPrintMesh,
+  type BaseDecor,
   type BaseOptions,
   type MagnetOptions,
   type Placed,
@@ -29,6 +30,7 @@ import {
 import { build3mf, build3mfPerPlate } from "./threemf";
 import { voxelRemesh } from "./remesh";
 import { wallThickness, type WallReport } from "./wall";
+import { decorSection, loadFont, type DecorOptions } from "./decor";
 import { minWallMm, reinforceThin, removeFragments, type FragmentReport, type ReinforceReport } from "./strength";
 
 export interface PrintInput {
@@ -55,6 +57,8 @@ export interface PrintOptions {
   nozzleMm?: number;
   /** ispessisce le pareti troppo sottili (predefinito: sì) */
   reinforce?: boolean;
+  /** testo e/o logo sulla base, davanti al modello */
+  decor?: DecorOptions | null;
 }
 
 export interface PrintReport {
@@ -192,6 +196,7 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
   }
 
   let baseLabel = 0;
+  let decorLabel = 0;
   if (opts.magnet) {
     onStage("Retro piatto e sede del magnete");
     await tick();
@@ -215,17 +220,39 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
     } else if (typeof opts.baseColor === "number") {
       baseLabel = Math.min(opts.baseColor, palette.length - 1);
     }
+    let decor: BaseDecor | null = null;
+    if (opts.decor && (opts.decor.text.trim() || opts.decor.logoSvg)) {
+      onStage("Testo e logo");
+      await tick();
+      const font = opts.decor.text.trim() ? await loadFont(opts.decor.font) : null;
+      const section = decorSection(w, font, opts.decor);
+      if (section) decor = { section, mode: opts.decor.mode, depthMm: opts.decor.depthMm ?? (opts.decor.mode === "rilievo" ? 0.8 : 0.6) };
+      else warnings.push("Il logo non contiene forme piene: usa un SVG con riempimento, non solo contorni");
+    }
     onStage("Aggiunta della base");
     await tick();
-    tracked = addBase(w, tracked, opts.base, baseLabel);
+    tracked = addBase(w, tracked, opts.base, baseLabel, decor);
+    if (decor && tracked.decorRun == null) warnings.push("Non c'è spazio sulla base per il testo: aumenta la misura o usa la base quadrata");
+    if (decor && tracked.decorRun != null) {
+      if (opts.decor?.color === "contrasto") {
+        // filamento in più: chiaro su base scura, scuro su base chiara
+        const v = parseInt(palette[baseLabel].slice(1), 16);
+        const lum = 0.2126 * ((v >> 16) & 255) + 0.7152 * ((v >> 8) & 255) + 0.0722 * (v & 255);
+        decorLabel = palette.length;
+        palette = [...palette, lum < 128 ? "#f2f2f2" : "#1c1c1e"];
+      } else {
+        decorLabel = baseLabel;
+      }
+    }
   }
   const volumeCm3 = tracked.solid.volume() / 1000;
 
   onStage("Adattamento al piatto");
   await tick();
   const split = splitToPlate(w, tracked.solid, opts.plate, opts.connectors !== false);
-  const pieces = split.pieces.map((s) => toPrintMesh(s, tracked.modelRun, tracked.baseRun, baseLabel));
-  const pins = split.pins.map((s) => toPrintMesh(s, tracked.modelRun, tracked.baseRun, baseLabel));
+  const extra = [{ run: tracked.decorRun, label: decorLabel }];
+  const pieces = split.pieces.map((s) => toPrintMesh(s, tracked.modelRun, tracked.baseRun, baseLabel, extra));
+  const pins = split.pins.map((s) => toPrintMesh(s, tracked.modelRun, tracked.baseRun, baseLabel, extra));
   const { placed, plates, fits } = packPlates(
     [...pieces.map((mesh) => ({ mesh })), ...pins.map((mesh) => ({ mesh, pin: true }))],
     opts.plate,

@@ -1,6 +1,6 @@
 // Operazioni "a tenuta" con Manifold: solido valido, base, taglio per il piatto.
 // Le etichette colore viaggiano come faceID e sopravvivono a unione e taglio.
-import type { Manifold, ManifoldToplevel } from "manifold-3d";
+import type { CrossSection, Manifold, ManifoldToplevel } from "manifold-3d";
 import { bounds, UNSET_LABEL, type PrintMesh } from "./meshOps";
 
 export interface Plate {
@@ -18,6 +18,15 @@ interface Tracked {
   solid: Manifold;
   modelRun: number;
   baseRun: number | null;
+  /** testo/logo sulla base */
+  decorRun?: number | null;
+}
+
+/** Testo o logo da mettere sulla base, davanti al modello. */
+export interface BaseDecor {
+  section: CrossSection;
+  mode: "rilievo" | "incisione";
+  depthMm: number;
 }
 
 /** Mesh già orientata e chiusa → Manifold. Lancia un errore leggibile se non è un solido valido. */
@@ -49,7 +58,7 @@ export function toManifold(w: ManifoldToplevel, m: PrintMesh): Tracked {
  * sul 15% più basso del modello: una statuina con le braccia aperte non deve
  * finire su un piedistallo enorme.
  */
-export function addBase(w: ManifoldToplevel, t: Tracked, opts: BaseOptions, labelForBase: number): Tracked {
+export function addBase(w: ManifoldToplevel, t: Tracked, opts: BaseOptions, labelForBase: number, decor?: BaseDecor | null): Tracked {
   const mesh = t.solid.getMesh();
   const v = mesh.vertProperties;
   const np = mesh.numProp;
@@ -79,22 +88,65 @@ export function addBase(w: ManifoldToplevel, t: Tracked, opts: BaseOptions, labe
   r = Math.max(r, fullR * 0.6);
   x0 = Math.min(x0, cx - r); x1 = Math.max(x1, cx + r);
   y0 = Math.min(y0, cy - r); y1 = Math.max(y1, cy + r);
-  const margin = Math.max(3, r * 0.12);
+  let margin = Math.max(3, r * 0.12);
   const h = Math.max(1.5, opts.heightMm);
   // affondamento: abbastanza da creare un buon appoggio, mai oltre metà base
   const sink = Math.min(h * 0.5, Math.max(0.8, height * 0.015));
+  const topZ = minZ + sink;
+
+  // testo/logo: serve una fascia libera davanti al modello (lato −Y = davanti)
+  let frontModel = Infinity;
+  for (let i = 0; i < v.length; i += np) if (v[i + 2] <= zCut) frontModel = Math.min(frontModel, v[i + 1]);
+  if (!Number.isFinite(frontModel)) frontModel = y0;
+  const bandNeed = decor ? Math.min(16, Math.max(7, (x1 - x0) * 0.16)) + 2 : 0;
+  let extraFront = 0;
 
   let base: Manifold;
+  let band: { y0: number; y1: number; width: (yc: number) => number } | null = null;
   if (opts.shape === "tonda") {
+    if (decor) {
+      // la base si allarga quanto basta per la fascia davanti
+      const free = frontModel - (cy - (r + margin));
+      if (free < bandNeed) margin += bandNeed - free;
+    }
     const R = r + margin;
+    const chamfer = Math.min(h * 0.35, R * 0.08);
     // leggera smussatura in alto: più elegante e niente spigolo vivo
-    base = w.Manifold.cylinder(h, R, R - Math.min(h * 0.35, R * 0.08), 128).translate([cx, cy, minZ - h + sink]);
+    base = w.Manifold.cylinder(h, R, R - chamfer, 128).translate([cx, cy, minZ - h + sink]);
+    const Rt = R - chamfer - 1;
+    band = { y0: cy - Rt + 1, y1: frontModel - 1, width: (yc) => 2 * Math.sqrt(Math.max(0, Rt * Rt - (yc - cy) ** 2)) };
   } else {
-    const sx = x1 - x0 + margin * 2, sy = y1 - y0 + margin * 2;
-    base = w.Manifold.cube([sx, sy, h], false).translate([cx - sx / 2, cy - sy / 2, minZ - h + sink]);
+    if (decor) {
+      const free = frontModel - (y0 - margin);
+      if (free < bandNeed) extraFront = bandNeed - free;
+    }
+    const sx = x1 - x0 + margin * 2, sy = y1 - y0 + margin * 2 + extraFront;
+    const by0 = y0 - margin - extraFront;
+    base = w.Manifold.cube([sx, sy, h], false).translate([cx - sx / 2, by0, minZ - h + sink]);
+    band = { y0: by0 + 1.5, y1: frontModel - 1, width: () => sx - 3 };
   }
   const baseRun = base.getMesh().runOriginalID[0];
   void labelForBase;
+
+  let decorRun: number | null = null;
+  if (decor && band && band.y1 - band.y0 > 2) {
+    const yc = (band.y0 + band.y1) / 2;
+    const bh = band.y1 - band.y0;
+    const b = decor.section.bounds();
+    const sw = b.max[0] - b.min[0] || 1, sh = b.max[1] - b.min[1] || 1;
+    const k = Math.min((band.width(yc) * 0.86) / sw, (bh * 0.8) / sh);
+    const cs = decor.section.translate([-(b.min[0] + b.max[0]) / 2, -(b.min[1] + b.max[1]) / 2]).scale(k).translate([cx, yc]);
+    if (decor.mode === "rilievo") {
+      const relief = cs.extrude(decor.depthMm + 0.3).translate([0, 0, topZ - 0.3]);
+      decorRun = relief.getMesh().runOriginalID[0];
+      base = base.add(relief);
+    } else {
+      const depth = Math.min(decor.depthMm, h * 0.6);
+      const cutter = cs.extrude(depth + 1).translate([0, 0, topZ - depth]);
+      decorRun = cutter.getMesh().runOriginalID[0];
+      base = base.subtract(cutter);
+    }
+  }
 
   // fondo a punta: si taglia in piano dove il modello è abbastanza largo (max
   // 12% dell'altezza) e lo si abbassa sulla base. Un appoggio di pochi mm
@@ -117,7 +169,7 @@ export function addBase(w: ManifoldToplevel, t: Tracked, opts: BaseOptions, labe
     model = model.trimByPlane([0, 0, 1], zFlat).translate([0, 0, -(zFlat - minZ)]);
   }
   const solid = model.add(base);
-  return { solid, modelRun: t.modelRun, baseRun };
+  return { solid, modelRun: t.modelRun, baseRun, decorRun };
 }
 
 /** Gioco radiale tra perno e foro (mm): incastro preciso ma che entra a mano */
@@ -363,7 +415,13 @@ export function makeMagnet(w: ManifoldToplevel, t: Tracked, opts: MagnetOptions)
  * Manifold → PrintMesh con etichette: triangoli del modello = loro colore,
  * della base = baseLabel, facce di taglio = colore dei vicini.
  */
-export function toPrintMesh(solid: Manifold, modelRun: number, baseRun: number | null, baseLabel: number): PrintMesh {
+export function toPrintMesh(
+  solid: Manifold,
+  modelRun: number,
+  baseRun: number | null,
+  baseLabel: number,
+  extra: { run: number | null | undefined; label: number }[] = [],
+): PrintMesh {
   const mesh = solid.getMesh();
   const np = mesh.numProp;
   const nv = mesh.vertProperties.length / np;
@@ -387,6 +445,7 @@ export function toPrintMesh(solid: Manifold, modelRun: number, baseRun: number |
     for (let t = mesh.runIndex[r] / 3; t < mesh.runIndex[r + 1] / 3; t++) {
       if (id === modelRun) label[t] = mesh.faceID[t];
       else if (baseRun !== null && id === baseRun) label[t] = baseLabel;
+      else for (const e of extra) if (e.run != null && id === e.run) label[t] = e.label;
     }
   }
   const pm: PrintMesh = { vert, tri, label };
