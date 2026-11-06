@@ -70,7 +70,7 @@ export function VariantsPanel({ active, hasModel, material, onMaterial, exportGl
     if (!active) return;
     try {
       const item = await generateVariant.mutateAsync({ id: active.id, quality });
-      toast.success(`"${item.name}" in lavorazione: segui l'avanzamento in galleria`, {
+      toast.success(`"${item.name}" in lavorazione: segui l'avanzamento in Modelli`, {
         duration: 6000,
       });
       onQueued();
@@ -165,7 +165,7 @@ export function VariantsPanel({ active, hasModel, material, onMaterial, exportGl
         </div>
         <p className="mb-3 text-[11px] leading-relaxed text-[#6f6f6f]">
           Il motore AI reinterpreta la foto originale di «{active.name}»: ogni generazione è
-          un'interpretazione nuova della forma. La variante appare in galleria accanto
+          un'interpretazione nuova della forma. La variante appare in Modelli accanto
           all'originale.
         </p>
         <div className="grid grid-cols-3 border border-[#d4d4d4]">

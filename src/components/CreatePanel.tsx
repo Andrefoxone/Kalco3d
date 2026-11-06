@@ -198,7 +198,7 @@ export function CreatePanel({ photo, onPhoto, onGenerated }: Props) {
       setStep("fatto");
       await utils.models.list.invalidate();
       onGenerated(item as ModelItemDTO);
-      toast.success("Modello generato e salvato in galleria");
+      toast.success("Modello generato e salvato in Modelli");
     } catch (err) {
       setStep("errore");
       toast.error(

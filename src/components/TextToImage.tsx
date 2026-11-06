@@ -18,8 +18,8 @@ const EXAMPLES = ["un bulldog francese seduto con un papillon", "una lampada da 
 interface Props {
   forPrint: boolean;
   isAdmin: boolean;
-  /** immagine scelta: diventa la foto frontale */
-  onPick: (file: File, prompt: string) => void;
+  /** immagine scelta: diventa la foto frontale (imageId = già nella galleria Foto) */
+  onPick: (file: File, prompt: string, imageId: number | null) => void;
 }
 
 async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
@@ -31,7 +31,7 @@ export function TextToImage({ forPrint, isAdmin, onPick }: Props) {
   const [prompt, setPrompt] = useState("");
   const [style, setStyle] = useState<ImageStyle>("realistico");
   const [count, setCount] = useState(2);
-  const [results, setResults] = useState<string[]>([]);
+  const [results, setResults] = useState<{ id: number | null; dataUrl: string }[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
   const utils = trpc.useUtils();
   const status = trpc.images.status.useQuery(undefined, { staleTime: 300_000 });
@@ -41,7 +41,8 @@ export function TextToImage({ forPrint, isAdmin, onPick }: Props) {
     setPicked(null);
     try {
       const out = await gen.mutateAsync({ prompt, style, forPrint, count });
-      setResults(out.images.map((i) => i.dataUrl));
+      setResults(out.images);
+      void utils.images.list.invalidate();
       if (out.failed > 0) toast(`${out.failed} immagine non riuscita: crediti restituiti`);
       void utils.billing.account.invalidate();
     } catch (err) {
@@ -52,8 +53,8 @@ export function TextToImage({ forPrint, isAdmin, onPick }: Props) {
 
   async function pick(i: number) {
     setPicked(i);
-    const file = await dataUrlToFile(results[i], `${prompt.slice(0, 40) || "immagine"}.jpg`);
-    onPick(file, prompt);
+    const file = await dataUrlToFile(results[i].dataUrl, `${prompt.slice(0, 40) || "immagine"}.jpg`);
+    onPick(file, prompt, results[i].id);
   }
 
   if (status.data && !status.data.enabled) {
@@ -113,7 +114,7 @@ export function TextToImage({ forPrint, isAdmin, onPick }: Props) {
 
       {results.length > 0 && (
         <div className="grid grid-cols-2 gap-2">
-          {results.map((src, i) => (
+          {results.map(({ dataUrl: src }, i) => (
             <button
               key={i}
               type="button"
@@ -135,7 +136,7 @@ export function TextToImage({ forPrint, isAdmin, onPick }: Props) {
       )}
       <p className="text-[11px] leading-relaxed text-[#6f6f6f]">
         {results.length > 0
-          ? "Scegli l'immagine da trasformare in 3D: diventa la foto frontale."
+          ? "Scegli l'immagine da trasformare in 3D: diventa la foto frontale. Le trovi tutte anche nella scheda Foto."
           : "Le immagini escono già adatte al 3D: un solo oggetto, intero, su fondo neutro."}
       </p>
     </div>

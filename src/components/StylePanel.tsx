@@ -268,7 +268,7 @@ export function StylePanel({
             className="flex h-11 items-center justify-center gap-2 bg-[#ff670d] text-[11px] font-medium uppercase tracking-[0.18em] text-white transition-all duration-150 hover:bg-[#e85c0b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {saving ? "Salvataggio…" : "Salva modifica in galleria"}
+            {saving ? "Salvataggio…" : "Salva modifica in Modelli"}
           </button>
           <label className="mt-1 flex items-center justify-between gap-3">
             <span className="text-[11px] uppercase tracking-[0.18em] text-[#525252]">

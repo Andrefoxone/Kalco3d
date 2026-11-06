@@ -7,7 +7,8 @@ import { useAuth } from "@/lib/auth";
 import { Viewport3D, type ViewportHandle } from "@/components/Viewport3D";
 import { ViewportToolbar } from "@/components/ViewportToolbar";
 import { CreatePanel } from "@/components/CreatePanel";
-import { AiCreatePanel } from "@/components/AiCreatePanel";
+import { AiCreatePanel, type IncomingPhoto } from "@/components/AiCreatePanel";
+import { PhotosPanel } from "@/components/PhotosPanel";
 import { BillingWidget } from "@/components/BillingWidget";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { GalleryPanel } from "@/components/GalleryPanel";
@@ -74,6 +75,7 @@ export default function Home() {
   const [wireframe, setWireframe] = useState(false);
   const [autoRotate, setAutoRotate] = useState(false);
   const [tab, setTab] = useState("crea");
+  const [incomingPhoto, setIncomingPhoto] = useState<IncomingPhoto | null>(null);
   // strumenti di editing
   const [tool, setTool] = useState<Tool>("orbit");
   const [brushRadius, setBrushRadius] = useState(0.3);
@@ -120,7 +122,7 @@ export default function Home() {
       next.set(item.id, item.status);
       const before = prev?.get(item.id);
       if (before === "processing" && item.status === "ready") {
-        toast.success(`"${item.name}" è pronto: lo trovi in galleria`, { duration: 6000 });
+        toast.success(`"${item.name}" è pronto: lo trovi in Modelli`, { duration: 6000 });
       } else if (before === "processing" && item.status === "failed") {
         toast.error(`Generazione AI di "${item.name}" fallita: ${item.error ?? "errore sconosciuto"}`, {
           duration: 8000,
@@ -349,7 +351,7 @@ export default function Home() {
       });
       await utils.models.list.invalidate();
       setActive(item as ModelItemDTO);
-      toast.success("Modifica salvata in galleria");
+      toast.success("Modifica salvata in Modelli");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Salvataggio non riuscito");
     }
@@ -543,42 +545,53 @@ export default function Home() {
         {/* pannello */}
         <aside className="flex min-h-0 w-full flex-1 flex-col border-t border-[#e4e4e4] bg-[#fcfcfc] lg:w-96 lg:flex-none lg:border-l lg:border-t-0">
           <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="grid h-[52px] w-full shrink-0 grid-cols-5 rounded-none border-b border-[#e4e4e4] bg-transparent p-0">
+            <TabsList className="grid h-[52px] w-full shrink-0 grid-cols-6 rounded-none border-b border-[#e4e4e4] bg-transparent p-0">
               <TabsTrigger
                 value="crea"
-                className="h-full rounded-none px-1 text-[11px] uppercase tracking-[0.12em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
               >
                 Crea
               </TabsTrigger>
               <TabsTrigger
                 value="stile"
-                className="h-full rounded-none px-1 text-[11px] uppercase tracking-[0.12em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
               >
                 Stile
               </TabsTrigger>
               <TabsTrigger
                 value="varianti"
-                className="h-full rounded-none px-1 text-[11px] uppercase tracking-[0.12em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
               >
                 Varianti
               </TabsTrigger>
               <TabsTrigger
                 value="stampa"
-                className="h-full rounded-none px-1 text-[11px] uppercase tracking-[0.12em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
               >
                 Stampa
               </TabsTrigger>
               <TabsTrigger
                 value="galleria"
-                className="h-full rounded-none px-1 text-[11px] uppercase tracking-[0.12em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
               >
-                Galleria
-                {count > 0 && <span className="ml-1 text-[10px] text-[#9a9a9a]">{count}</span>}
+                Modelli
+                {count > 0 && <span className="ml-0.5 text-[9px] tracking-normal text-[#9a9a9a]">{count}</span>}
+              </TabsTrigger>
+              <TabsTrigger
+                value="foto"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+              >
+                Foto
               </TabsTrigger>
             </TabsList>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <TabsContent value="crea" className="m-0">
-                <AiCreatePanel onFrontPhoto={setPhoto} onQueued={() => setTab("galleria")} />
+                <AiCreatePanel
+                  onFrontPhoto={setPhoto}
+                  onQueued={() => setTab("galleria")}
+                  incoming={incomingPhoto}
+                  onIncomingUsed={() => setIncomingPhoto(null)}
+                />
                 <Collapsible className="border-t border-[#e4e4e4]">
                   <CollapsibleTrigger className="group flex w-full items-center justify-between px-5 py-4 text-left text-[11px] uppercase tracking-[0.18em] text-[#525252] hover:text-[#171717] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff670d]">
                     Importa file CAD (DWG, STEP, STL…)
@@ -640,6 +653,14 @@ export default function Home() {
                   onSizeMm={setSizeMm}
                   getInput={() => viewportRef.current?.getPrintInput() ?? null}
                   modelSize={printReport?.size ?? null}
+                />
+              </TabsContent>
+              <TabsContent value="foto" className="m-0">
+                <PhotosPanel
+                  onUseFor3d={(p) => {
+                    setIncomingPhoto(p);
+                    setTab("crea");
+                  }}
                 />
               </TabsContent>
               <TabsContent value="galleria" className="m-0">

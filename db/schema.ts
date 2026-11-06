@@ -35,3 +35,18 @@ export const models = pgTable("models", {
 });
 
 export type ModelRow = typeof models.$inferSelect;
+
+/** Galleria Foto (supabase/migrations/0003_images.sql): immagini da testo e foto dei modelli. */
+export const images = pgTable("images", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  userId: uuid("user_id").notNull(),
+  /** ai = creata dal testo · foto = caricata per generare un modello */
+  source: varchar("source", { length: 8 }).notNull().default("ai"),
+  name: varchar("name", { length: 120 }).notNull().default(""),
+  prompt: varchar("prompt", { length: 600 }),
+  style: varchar("style", { length: 16 }),
+  path: varchar("path", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ImageRow = typeof images.$inferSelect;

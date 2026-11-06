@@ -1,7 +1,7 @@
 // Generazione foto → 3D con l'AI: il servizio principale.
 // 1 foto frontale obbligatoria + fino a 3 viste extra, controllo qualità
 // della foto prima di spendere crediti, scelta di qualità e destinazione.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   CircleAlert,
@@ -58,10 +58,19 @@ interface Slot {
   check: PhotoCheck;
 }
 
+export interface IncomingPhoto {
+  file: File;
+  name: string;
+  imageId: number | null;
+}
+
 interface Props {
   /** la foto frontale viene condivisa con il rilievo rapido */
   onFrontPhoto: (photo: LoadedPhoto) => void;
   onQueued: () => void;
+  /** foto scelta dalla galleria Foto, da usare come frontale */
+  incoming?: IncomingPhoto | null;
+  onIncomingUsed?: () => void;
 }
 
 /** JPEG per l'invio: lato massimo 2048px (oltre non migliora e pesa). */
@@ -78,7 +87,7 @@ function encodeForUpload(canvas: HTMLCanvasElement): string {
   return src.toDataURL("image/jpeg", 0.92).split(",")[1];
 }
 
-export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
+export function AiCreatePanel({ onFrontPhoto, onQueued, incoming, onIncomingUsed }: Props) {
   const [slots, setSlots] = useState<Partial<Record<View, Slot>>>({});
   const [quality, setQuality] = useState<Quality>("standard");
   const [target, setTarget] = useState<Target>("ecommerce");
@@ -86,6 +95,8 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
   const [busy, setBusy] = useState(false);
   const [override, setOverride] = useState(false);
   const [source, setSource] = useState<"foto" | "testo">("foto");
+  /** la frontale viene dalla galleria Foto: il server non la duplica */
+  const [frontImageId, setFrontImageId] = useState<number | null>(null);
   const utils = trpc.useUtils();
   const isAdmin = trpc.billing.account.useQuery(undefined, { staleTime: 15_000 }).data?.admin ?? false;
   const generateAi = trpc.models.generateAi.useMutation();
@@ -120,7 +131,16 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
     }
   }
 
+  useEffect(() => {
+    if (!incoming) return;
+    setSource("foto");
+    setName(incoming.name.slice(0, 60));
+    void setSlot("front", incoming.file).then(() => setFrontImageId(incoming.imageId));
+    onIncomingUsed?.();
+  }, [incoming]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function removeSlot(view: View) {
+    if (view === "front") setFrontImageId(null);
     setSlots((s) => {
       const next = { ...s };
       delete next[view];
@@ -139,9 +159,10 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
         photos,
         quality,
         target,
+        imageId: frontImageId,
       });
       await Promise.all([utils.models.list.invalidate(), utils.billing.account.invalidate()]);
-      toast.success("Generazione avviata: segui l'avanzamento in galleria");
+      toast.success("Generazione avviata: segui l'avanzamento in Modelli");
       onQueued();
     } catch (err) {
       if (handleNoCredits(err)) return;
@@ -186,9 +207,9 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
         <TextToImage
           forPrint={target === "stampa"}
           isAdmin={isAdmin}
-          onPick={(file, prompt) => {
+          onPick={(file, prompt, imageId) => {
             if (!name) setName(prompt.trim().slice(0, 60));
-            void setSlot("front", file);
+            void setSlot("front", file).then(() => setFrontImageId(imageId));
           }}
         />
       )}
@@ -199,7 +220,10 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
           view="front"
           slot={slots.front}
           big
-          onFile={(f) => void setSlot("front", f)}
+          onFile={(f) => {
+            setFrontImageId(null);
+            void setSlot("front", f);
+          }}
           onRemove={() => removeSlot("front")}
         />
         {(["left", "back", "right"] as View[]).map((v) => (
@@ -299,7 +323,7 @@ export function AiCreatePanel({ onFrontPhoto, onQueued }: Props) {
             ? "Correggi le foto segnate in rosso prima di generare: risparmi crediti e tempo."
             : hasProblems
               ? "Generi ignorando gli avvisi: il risultato potrebbe deludere."
-              : `${views.length > 1 ? `${views.length} foto` : "1 foto"} · di solito 1–4 minuti. Il modello compare in galleria da solo.`}
+              : `${views.length > 1 ? `${views.length} foto` : "1 foto"} · di solito 1–4 minuti. Il modello compare in Modelli da solo.`}
         {blocking && !noEngine && (
           <>
             {" "}

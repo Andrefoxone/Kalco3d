@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, like } from "drizzle-orm";
 import { authedQuery, createRouter, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
-import { models } from "../../db/schema";
+import { images as imagesTable, models } from "../../db/schema";
 import { storage } from "../lib/storage";
 import { buildGlb, buildMesh } from "../lib/glb";
 import { canStartAiJob, startAiJob } from "../aiJob";
@@ -211,6 +211,8 @@ export const modelsRouter = createRouter({
           .max(4),
         quality: z.enum(QUALITIES).default("standard"),
         target: z.enum(TARGETS).default("ecommerce"),
+        /** la foto frontale viene già dalla galleria Foto: non duplicarla */
+        imageId: z.number().int().nullish(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -274,6 +276,12 @@ export const modelsRouter = createRouter({
         })
         .returning({ id: models.id });
       const id = inserted[0]?.id;
+      if (!input.imageId) {
+        await getDb()
+          .insert(imagesTable)
+          .values({ userId: ctx.user.id, source: "foto", name: safeName, path: savedPhoto.key })
+          .catch(() => undefined);
+      }
       startAiJob(id, { images, quality: input.quality, target: input.target }, `${ctx.user.id}/${safeName}`, cost > 0 ? { userId: ctx.user.id, cost } : undefined);
       const row = await getDb().query.models.findFirst({ where: eq(models.id, id) });
       if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
