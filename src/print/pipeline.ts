@@ -3,23 +3,13 @@
 // chiusura buchi → colori → solido Manifold → base → taglio per il piatto →
 // disposizione → controllo pareti → 3MF.
 import { getManifold } from "./manifold";
-import {
-  dedupeTriangles,
-  fillHoles,
-  orientConsistently,
-  propagateLabels,
-  toPrintSpace,
-  UNSET_LABEL,
-  weld,
-  type PrintMesh,
-} from "./meshOps";
-import { quantizeColors, smoothLabels, toHex } from "./colors";
+import { toPrintSpace } from "./meshOps";
+import { quantizeColors, toHex } from "./colors";
 import {
   addBase,
   makeMagnet,
   packPlates,
   splitToPlate,
-  toManifold,
   toPrintMesh,
   type BaseDecor,
   type BaseOptions,
@@ -28,7 +18,7 @@ import {
   type Plate,
 } from "./solid";
 import { build3mf, build3mfPerPlate } from "./threemf";
-import { voxelRemesh } from "./remesh";
+import { repairToSolid } from "./repair";
 import { wallThickness, type WallReport } from "./wall";
 import { decorSection, loadFont, type DecorOptions } from "./decor";
 import { minWallMm, reinforceThin, removeFragments, type FragmentReport, type ReinforceReport } from "./strength";
@@ -132,36 +122,15 @@ export async function preparePrint(input: PrintInput, opts: PrintOptions, onStag
     palette = [toHex([r / triCount, g / triCount, b / triCount])];
   }
 
-  onStage("Riparazione della mesh");
-  await tick();
   const w = await getManifold();
-  let mesh: PrintMesh = dedupeTriangles(weld(soupMm, labels ?? new Uint16Array(triCount)));
-  const oriented = orientConsistently(mesh);
-  mesh = oriented.mesh;
-  const filled = fillHoles(mesh, (polys) => w.triangulate(polys) as [number, number, number][]);
-  mesh = filled.mesh;
-  propagateLabels(mesh, (l) => l === UNSET_LABEL, 50);
-  if (mesh.label) for (let t = 0; t < mesh.label.length; t++) if (mesh.label[t] === UNSET_LABEL) mesh.label[t] = 0;
-  // i triangoli dei buchi chiusi potrebbero essere girati rispetto al resto
-  mesh = orientConsistently(mesh).mesh;
-  if (palette.length > 1) smoothLabels(mesh, 3);
-
-  onStage("Costruzione del solido");
-  await tick();
-  let tracked: ReturnType<typeof toManifold>;
-  let rebuilt = false;
-  try {
-    tracked = toManifold(w, mesh);
-  } catch {
-    // superfici che si incrociano o spigoli condivisi da 3+ facce (frequente
-    // nei modelli AI): si rifonde il modello come un solido unico
-    onStage("Ricostruzione del solido");
-    await tick();
-    const r = voxelRemesh(w, mesh);
-    tracked = toManifold(w, r.mesh);
-    rebuilt = true;
+  const repaired = await repairToSolid(w, soupMm, labels, palette.length > 1, onStage);
+  let tracked = repaired.tracked;
+  const rebuilt = repaired.rebuilt;
+  const filled = { holes: repaired.holesFilled, skipped: repaired.holesSkipped };
+  const oriented = { flipped: repaired.facesFlipped };
+  if (rebuilt) {
     warnings.push(
-      `Il modello aveva superfici che si incrociano: l'ho ricostruito come un solido unico (dettagli sotto ${r.cellMm.toFixed(1).replace(".", ",")} mm leggermente smussati)`,
+      `Il modello aveva superfici che si incrociano: l'ho ricostruito come un solido unico (dettagli sotto ${repaired.cellMm.toFixed(1).replace(".", ",")} mm leggermente smussati)`,
     );
   }
 

@@ -50,6 +50,14 @@ Le generazioni AI girano in background sul server per diversi minuti: serve un s
 3. Build `npm run build`, avvio `npm start` (già in `railway.json`). Railway assegna `PORT` da solo.
 4. Metti il dominio pubblico nelle *URL Configuration* di Supabase (punto 4 sopra).
 
+## Kalco3D Building (`/building`)
+
+Grandi stampe 3D: cemento (portale, gru), pellet o bracci robot, oppure stampanti normali a pezzi.
+- Modello dalla galleria o da file (STL, OBJ, GLB, STEP, DXF…), rotazioni di 90°, altezza reale in metri.
+- `src/building/engine.ts`: strati con Manifold, perimetri e zig-zag, sbalzi oltre l'angolo ammesso, preventivo (materiale, tempo, costi) e G-code generico (G0/G1, E volumetrico opzionale).
+- Se il modello non entra nella macchina: pezzi numerati dal basso con perni (`splitToPlate`), STL dei pezzi e pagina di montaggio.
+- Fase 2 (da fare): dalla pianta DWG/immagine ai muri stampabili.
+
 ## Immagini da testo (FLUX.2)
 
 - Nella scheda AI, «Creala dal testo»: l'utente descrive l'oggetto e FLUX.2 [pro] su fal crea 1–4 immagini (`api/lib/imageGen.ts`).

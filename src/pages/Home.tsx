@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -397,6 +398,12 @@ export default function Home() {
           <span className="inline-block size-2.5 rounded-full bg-[#ff670d]" aria-hidden="true" />
           <span className="font-display text-2xl leading-none tracking-tight">Kalco3D</span>
           <span className="text-[11px] uppercase tracking-[0.22em] text-[#6f6f6f]">photo to 3D</span>
+          <Link
+            to="/building"
+            className="ml-3 self-center border border-[#ff670d] px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[#ff670d] transition-colors hover:bg-[#ff670d] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff670d]"
+          >
+            Building
+          </Link>
         </div>
         <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[#6f6f6f]">
           <span
