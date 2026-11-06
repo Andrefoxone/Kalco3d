@@ -46,10 +46,10 @@ describe("planProviders", () => {
 });
 
 describe("tripoRequest", () => {
-  it("stampa: niente texture, misure reali, geometria dettagliata in pro", () => {
+  it("stampa: colori della foto (senza PBR), misure reali, geometria dettagliata in pro", () => {
     const { path, body } = tripoRequest("pro", "stampa", { front: "file_a" });
     expect(path).toBe("/generation/image-to-model");
-    expect(body).toMatchObject({ model: TRIPO_H, texture: false, pbr: false, auto_size: true, geometry_quality: "detailed", input: "file_a" });
+    expect(body).toMatchObject({ model: TRIPO_H, texture: true, pbr: false, texture_alignment: "original_image", auto_size: true, geometry_quality: "detailed", input: "file_a" });
   });
   it("e-commerce: PBR, leggero per AR, in scala reale", () => {
     const { body } = tripoRequest("standard", "ecommerce", { front: "f" });
@@ -77,9 +77,9 @@ describe("altri motori", () => {
     expect(rodinFields("bozza", "gioco", 1)).not.toHaveProperty("condition_mode");
     expect(rodinFields("bozza", "gioco", 1).mesh_mode).toBe("Quad");
   });
-  it("Hunyuan: solo geometria per la stampa, viste extra passate", () => {
+  it("Hunyuan: stampa con colori (senza PBR), viste extra passate", () => {
     const i = falHunyuanInput("pro", "stampa", { front: "F", back: "B" });
-    expect(i).toMatchObject({ input_image_url: "F", back_image_url: "B", generate_type: "Geometry", enable_pbr: false });
+    expect(i).toMatchObject({ input_image_url: "F", back_image_url: "B", generate_type: "Normal", enable_pbr: false });
     expect(i.face_count as number).toBeLessThanOrEqual(1_500_000);
   });
 });
@@ -191,8 +191,8 @@ describe("Meshy", () => {
     vi.useRealTimers();
   });
 
-  it("parametri: stampa senza texture, gioco low-poly, più foto sull'endpoint multi", () => {
-    expect(meshyRequest("pro", "stampa", ["a"]).body).toMatchObject({ should_texture: false, ai_model: "latest", should_remesh: false, image_url: "a" });
+  it("parametri: stampa con colori senza PBR, gioco low-poly, più foto sull'endpoint multi", () => {
+    expect(meshyRequest("pro", "stampa", ["a"]).body).toMatchObject({ should_texture: true, enable_pbr: false, ai_model: "latest", should_remesh: false, image_url: "a" });
     expect(meshyRequest("bozza", "gioco", ["a"]).body).toMatchObject({ ai_model: "meshy-6-lite", should_remesh: true, target_polycount: 5000 });
     const m = meshyRequest("standard", "ecommerce", ["f", "b", "l"]);
     expect(m.path).toBe("/openapi/v1/multi-image-to-3d");

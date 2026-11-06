@@ -87,7 +87,7 @@ describe("costo in crediti", () => {
   it("segue il listino", () => {
     expect(creditCost("bozza", "render")).toBe(5);
     expect(creditCost("standard", "ecommerce")).toBe(8);
-    expect(creditCost("standard", "stampa")).toBe(5);
+    expect(creditCost("standard", "stampa")).toBe(8);
     expect(creditCost("pro", "gioco")).toBe(15);
   });
 });

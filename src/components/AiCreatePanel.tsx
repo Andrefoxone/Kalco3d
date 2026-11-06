@@ -48,7 +48,7 @@ const QUALITY: { id: Quality; label: string; hint: string }[] = [
 
 const TARGET: { id: Target; label: string; hint: string; icon: React.ReactNode }[] = [
   { id: "ecommerce", label: "E-commerce e AR", hint: "Texture PBR, leggero, misure reali per la realtà aumentata", icon: <ShoppingBag className="size-4" /> },
-  { id: "stampa", label: "Stampa 3D", hint: "Solo forma, massimo dettaglio, export STL in millimetri", icon: <Printer className="size-4" /> },
+  { id: "stampa", label: "Stampa 3D", hint: "Colori per più filamenti, misure reali, 3MF pronto", icon: <Printer className="size-4" /> },
   { id: "render", label: "Render e design", hint: "Texture ad alta risoluzione per immagini da catalogo", icon: <Camera className="size-4" /> },
   { id: "gioco", label: "Giochi e real-time", hint: "Low-poly con topologia pulita per i motori di gioco", icon: <Gamepad2 className="size-4" /> },
 ];

@@ -79,9 +79,12 @@ export function tripoRequest(
   };
 
   if (target === "stampa") {
-    // per la stampa serve solo la forma: niente texture (costa meno) e dimensioni reali
-    body.texture = false;
+    // stampa a colori (AMS): servono i colori veri della foto, non i
+    // materiali PBR; misure reali e geometria dettagliata in pro
+    body.texture = true;
     body.pbr = false;
+    body.texture_alignment = "original_image";
+    body.texture_quality = quality === "bozza" ? "standard" : "detailed";
     body.auto_size = true;
     if (quality === "pro") body.geometry_quality = "detailed";
   } else {
@@ -122,7 +125,7 @@ export function rodinFields(quality: Quality, target: Target, viewCount: number)
     tier: "Gen-2",
     geometry_file_format: "glb",
     quality: { bozza: "low", standard: "medium", pro: "high" }[quality],
-    material: target === "stampa" ? "Shaded" : "PBR",
+    material: "PBR",
     mesh_mode: target === "gioco" ? "Quad" : "Raw",
   };
   // più foto dello stesso oggetto: vanno fuse in un unico modello
@@ -150,8 +153,9 @@ export function falHunyuanInput(
   };
   const input: Record<string, unknown> = {
     input_image_url: urls.front,
-    generate_type: target === "stampa" ? "Geometry" : "Normal",
+    generate_type: "Normal",
     face_count: faceCount[target][quality],
+    // per la stampa contano i colori di base, non i materiali
     enable_pbr: target !== "stampa",
   };
   if (urls.back) input.back_image_url = urls.back;
@@ -182,12 +186,9 @@ export function meshyRequest(quality: Quality, target: Target, urls: string[]): 
     ai_model: quality === "bozza" ? "meshy-6-lite" : "latest",
     topology: "triangle",
   };
-  if (target === "stampa") {
-    body.should_texture = false;
-  } else {
-    body.should_texture = true;
-    body.enable_pbr = true;
-  }
+  // anche la stampa vuole i colori (filamenti multipli); PBR solo dove serve
+  body.should_texture = true;
+  body.enable_pbr = target !== "stampa";
   const polys: Record<Target, Record<Quality, number | null>> = {
     ecommerce: { bozza: 40_000, standard: 80_000, pro: 150_000 },
     stampa: { bozza: null, standard: null, pro: null },

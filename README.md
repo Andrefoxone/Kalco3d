@@ -58,7 +58,7 @@ Le generazioni AI girano in background sul server per diversi minuti: serve un s
 
 ## Crediti e pagamenti (Stripe)
 
-- Ogni nuovo utente riceve 20 crediti. Costi: bozza 5, standard 8 (5 se «stampa»), Pro 15. Preparazione stampa gratis.
+- Ogni nuovo utente riceve 20 crediti. Costi: bozza 5, standard 8, Pro 15 (anche per la stampa, che ora chiede i colori). Preparazione stampa gratis.
 - Piani: Maker 19 € / 150 crediti, Pro 49 € / 450, Studio 119 € / 1300 al mese. Ricarica 15 € / 100 crediti che non scadono.
 - Il saldo sta in `credit_accounts`, ogni movimento in `credit_ledger` (`supabase/migrations/0002_credits.sql`).
 - Il credito si scala prima di chiamare il motore AI e torna indietro se la generazione fallisce.

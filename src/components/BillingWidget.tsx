@@ -82,7 +82,7 @@ export function BillingWidget() {
                 <>
                   Hai <strong className="text-[#171717]">{acc?.balance ?? 0} crediti</strong>
                   {acc && acc.planBalance > 0 && ` (${acc.planBalance} del piano, ${acc.extraBalance} extra)`}. Un modello
-                  standard costa 8 crediti, una bozza 5, il Pro 15. La preparazione per la stampa è gratis.
+                  standard costa 8 crediti, una bozza 5, il Pro 15, anche per la stampa a colori. La preparazione per la stampa è gratis.
                 </>
               )}
             </DialogDescription>

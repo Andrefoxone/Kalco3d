@@ -32,12 +32,13 @@ export function planById(id: string): PlanInfo | undefined {
 
 /**
  * Crediti di una generazione AI. Regola: almeno 2× il costo del motore.
- * Stampa = solo forma (il motore costa la metà).
+ * La stampa ora chiede anche i colori, quindi costa come le altre destinazioni.
  */
 export function creditCost(quality: "bozza" | "standard" | "pro", target: "ecommerce" | "stampa" | "render" | "gioco"): number {
   if (quality === "bozza") return 5;
   if (quality === "pro") return 15;
-  return target === "stampa" ? 5 : 8;
+  void target;
+  return 8;
 }
 
 /** Immagini da testo (FLUX.2 pro, ~0,03 $ l'una): 1 credito ogni 2 immagini, arrotondato in su. */
