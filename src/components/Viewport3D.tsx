@@ -40,15 +40,17 @@ export interface ViewportHandle {
   getSourceMaxDim: () => number | null;
   getPrintInput: () => PrintInput | null;
   captureViews: (only?: string[]) => CapturedView[];
+  playAnimation: (name: string | null) => void;
 }
 
 interface Props {
   onStateChange?: (state: LoadState) => void;
   onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
+  onAnimations?: (names: string[]) => void;
 }
 
 export const Viewport3D = forwardRef<ViewportHandle, Props>(function Viewport3D(
-  { onStateChange, onHistoryChange },
+  { onStateChange, onHistoryChange, onAnimations },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,12 +59,15 @@ export const Viewport3D = forwardRef<ViewportHandle, Props>(function Viewport3D(
   stateCb.current = onStateChange;
   const historyCb = useRef(onHistoryChange);
   historyCb.current = onHistoryChange;
+  const animCb = useRef(onAnimations);
+  animCb.current = onAnimations;
 
   useEffect(() => {
     if (!containerRef.current) return;
     const scene = new ViewportScene(containerRef.current, {
       onStateChange: (s) => stateCb.current?.(s),
       onHistoryChange: (u, r) => historyCb.current?.(u, r),
+      onAnimations: (names) => animCb.current?.(names),
     });
     sceneRef.current = scene;
     return () => {
@@ -98,6 +103,7 @@ export const Viewport3D = forwardRef<ViewportHandle, Props>(function Viewport3D(
     getSourceMaxDim: () => sceneRef.current?.getSourceMaxDim() ?? null,
     getPrintInput: () => sceneRef.current?.getPrintInput() ?? null,
     captureViews: (only?: string[]) => sceneRef.current?.captureViews(only) ?? [],
+    playAnimation: (name: string | null) => sceneRef.current?.playAnimation(name),
   }));
 
   return <div ref={containerRef} className="absolute inset-0" aria-label="Visualizzatore 3D" />;

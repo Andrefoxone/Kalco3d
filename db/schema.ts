@@ -31,6 +31,12 @@ export const models = pgTable("models", {
   stage: varchar("stage", { length: 96 }),
   /** anteprima renderizzata dal motore (miniatura galleria) */
   previewKey: varchar("preview_key", { length: 255 }),
+  /** modello animato: da quale modello nasce (supabase/migrations/0004_rig.sql) */
+  parentId: bigint("parent_id", { mode: "number" }),
+  /** copia FBX del modello animato */
+  fbxKey: varchar("fbx_key", { length: 255 }),
+  /** animazioni nel file, separate da virgola */
+  animations: varchar("animations", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1,7 +1,7 @@
 // Job asincroni foto → 3D. La mutation crea subito il record "processing";
 // qui il job gira in background sulla pipeline multi-motore (api/ai3d),
 // aggiorna avanzamento e fase nel DB, salva GLB + anteprima nello storage.
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./queries/connection";
 import { models } from "../db/schema";
 import { storage } from "./lib/storage";
@@ -9,6 +9,8 @@ import { log } from "./lib/logger";
 import { addCredits } from "./lib/credits";
 import { generateWithFallback, QUALITIES, TARGETS, type GenerationRequest } from "./ai3d";
 import { creditCost } from "@contracts/billing";
+import { rigCreditCost, type RigSpec } from "@contracts/rig";
+import { rigWithTripo } from "./ai3d/rig";
 
 const MAX_CONCURRENT = Number(process.env.AI_MAX_CONCURRENT ?? 3);
 const JOB_TIMEOUT_MS = 30 * 60 * 1000;
@@ -151,6 +153,97 @@ async function executeAiJob(modelId: number, req: GenerationRequest, safeName: s
   });
 }
 
+/** Scrive avanzamento e fase nel DB al massimo ogni PROGRESS_WRITE_MS. */
+function progressWriter(modelId: number) {
+  let lastWrite = 0;
+  let lastStage = "";
+  return (percent: number, stage: string) => {
+    const now = Date.now();
+    if (stage === lastStage && now - lastWrite < PROGRESS_WRITE_MS) return;
+    lastWrite = now;
+    lastStage = stage;
+    void getDb()
+      .update(models)
+      .set({ progress: Math.max(0, Math.min(99, Math.round(percent))), stage: stage.slice(0, 96) })
+      .where(eq(models.id, modelId))
+      .catch(() => undefined);
+  };
+}
+
+export interface RigJob {
+  /** URL firmato del GLB di partenza */
+  modelUrl: string;
+  animations: string[];
+  spec: RigSpec;
+  fbx: boolean;
+}
+
+/** Auto-rigging in background: stesso schema dei job AI (record "processing", rimborso se fallisce). */
+export function startRigJob(modelId: number, job: RigJob, safeName: string, charge?: { userId: string; cost: number }): void {
+  running++;
+  void executeRigJob(modelId, job, safeName)
+    .catch(async (err) => {
+      const msg = (err instanceof Error ? err.message : String(err)).slice(0, 250);
+      log.error("rig job failed", { modelId, error: msg });
+      if (charge) {
+        await addCredits(charge.userId, charge.cost, "rimborso", modelId, null).catch(() => undefined);
+      }
+      await getDb()
+        .update(models)
+        .set({ status: "failed", error: msg, stage: charge ? "Non riuscita · crediti restituiti" : "Animazione non riuscita" })
+        .where(eq(models.id, modelId))
+        .catch(() => undefined);
+    })
+    .finally(() => {
+      running--;
+    });
+}
+
+async function executeRigJob(modelId: number, job: RigJob, safeName: string) {
+  const signal = AbortSignal.timeout(JOB_TIMEOUT_MS);
+  const onProgress = progressWriter(modelId);
+  const result = await rigWithTripo(job, onProgress, signal);
+  onProgress(96, "Salvataggio");
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const saved = await storage.uploadFile({
+    fileContent: new Uint8Array(result.glb),
+    fileName: fileIn(safeName, "modelli", stamp, "glb"),
+    contentType: "model/gltf-binary",
+  });
+  let fbxKey: string | null = null;
+  if (result.fbx) {
+    try {
+      const f = await storage.uploadFile({
+        fileContent: new Uint8Array(result.fbx),
+        fileName: fileIn(safeName, "modelli", stamp, "fbx"),
+        contentType: "application/octet-stream",
+      });
+      fbxKey = f.key;
+    } catch {
+      fbxKey = null; // il GLB animato è il prodotto principale
+    }
+  }
+  const stats = parseGlbStats(result.glb);
+  await getDb()
+    .update(models)
+    .set({
+      glbKey: saved.key,
+      fbxKey,
+      animations: result.animations.join(",").slice(0, 255) || null,
+      status: "ready",
+      progress: 100,
+      stage: null,
+      error: null,
+      provider: "tripo",
+      providerModel: `rig ${result.rigType}`.slice(0, 64),
+      vertices: stats.vertices,
+      triangles: stats.triangles,
+      sizeBytes: result.glb.length,
+    })
+    .where(eq(models.id, modelId));
+  log.info("rig job done", { modelId, rigType: result.rigType, animations: result.animations.length, tripoCredits: result.credits });
+}
+
 /** "<userId>/<nome>" → "<userId>/<cartella>/<data>-<nome>.<ext>" */
 function fileIn(owned: string, folder: string, stamp: string, ext: string): string {
   const slash = owned.indexOf("/");
@@ -165,10 +258,11 @@ export async function sweepStaleAiJobs(): Promise<void> {
     const stale = await getDb()
       .update(models)
       .set({ status: "failed", error: "Generazione interrotta: il server è stato riavviato", stage: "Interrotta · crediti restituiti" })
-      .where(and(eq(models.status, "processing"), eq(models.mode, "ai")))
-      .returning({ id: models.id, userId: models.userId, quality: models.quality, target: models.target });
+      .where(and(eq(models.status, "processing"), inArray(models.mode, ["ai", "rig"])))
+      .returning({ id: models.id, userId: models.userId, quality: models.quality, target: models.target, mode: models.mode, fbxKey: models.fbxKey });
     for (const m of stale) {
-      const cost = creditCost(
+      // il rig registra il costo pagato nel campo fbx_key finché è in lavorazione
+      const cost = m.mode === "rig" ? rigCreditCost(m.fbxKey === "fbx") : creditCost(
         (QUALITIES as readonly string[]).includes(m.quality ?? "") ? (m.quality as (typeof QUALITIES)[number]) : "standard",
         (TARGETS as readonly string[]).includes(m.target ?? "") ? (m.target as (typeof TARGETS)[number]) : "ecommerce",
       );

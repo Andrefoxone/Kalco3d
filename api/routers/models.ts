@@ -6,7 +6,9 @@ import { getDb } from "../queries/connection";
 import { images as imagesTable, models } from "../../db/schema";
 import { storage } from "../lib/storage";
 import { buildGlb, buildMesh } from "../lib/glb";
-import { canStartAiJob, startAiJob } from "../aiJob";
+import { canStartAiJob, startAiJob, startRigJob } from "../aiJob";
+import { rigAvailable } from "../ai3d/rig";
+import { MAX_ANIMATIONS, RIG_SPECS, rigCreditCost } from "@contracts/rig";
 import { addCredits, isAdmin, spendCredits } from "../lib/credits";
 import { creditCost, MAX_JOBS_PER_USER } from "@contracts/billing";
 import { count } from "drizzle-orm";
@@ -196,6 +198,7 @@ export const modelsRouter = createRouter({
       providers: ids.map((id) => ({ id, label: providerLabel(id) })),
       canSingle: canGenerate(1),
       canMulti: canGenerate(2),
+      canRig: rigAvailable(),
     };
   }),
 
@@ -393,14 +396,91 @@ export const modelsRouter = createRouter({
     }),
 
   download: authedQuery
-    .input(z.object({ id: z.number().int() }))
+    .input(z.object({ id: z.number().int(), format: z.enum(["glb", "fbx"]).default("glb") }))
     .query(async ({ input, ctx }) => {
       const row = await getDb().query.models.findFirst({
         where: and(eq(models.id, input.id), eq(models.userId, ctx.user.id)),
       });
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Modello non trovato" });
+      if (input.format === "fbx") {
+        if (row.status !== "ready" || !row.fbxKey) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Questo modello non ha una copia FBX" });
+        }
+        const { url } = await storage.getPresignedUrl({ key: row.fbxKey, download: true });
+        return { url, name: `${row.name}.fbx` };
+      }
       const { url } = await storage.getPresignedUrl({ key: row.glbKey, download: true });
       return { url, name: `${row.name}.glb` };
+    }),
+
+  // Auto-rigging: scheletro + animazioni su un modello pronto. Crea un nuovo
+  // modello "rig" (l'originale resta com'è) e lavora in background.
+  rig: authedQuery
+    .input(
+      z.object({
+        id: z.number().int(),
+        animations: z.array(z.string().max(48)).max(MAX_ANIMATIONS),
+        spec: z.enum(RIG_SPECS.map((s) => s.id) as [string, ...string[]]).default("tripo"),
+        fbx: z.boolean().default(true),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const parent = await getDb().query.models.findFirst({
+        where: and(eq(models.id, input.id), eq(models.userId, ctx.user.id)),
+      });
+      if (!parent) throw new TRPCError({ code: "NOT_FOUND", message: "Modello non trovato" });
+      if (parent.status !== "ready" || !parent.glbKey) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Il modello non è ancora pronto" });
+      }
+      if (parent.mode === "rig") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Questo modello è già animato: parti dall'originale" });
+      }
+      if (!rigAvailable()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Animazione non disponibile: manca la chiave Tripo sul server" });
+      }
+      if (!canStartAiJob()) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Altre generazioni AI sono in corso: riprova tra qualche minuto" });
+      }
+      const admin = isAdmin(ctx.user.email);
+      await checkUserJobs(ctx.user.id, admin);
+      const cost = admin ? 0 : rigCreditCost(input.fbx);
+      return withCharge(ctx.user.id, cost, async () => {
+        // URL firmato valido abbastanza a lungo per i tre passaggi del motore
+        const { url: modelUrl } = await storage.getPresignedUrl({ key: parent.glbKey });
+        const base = parent.name.replace(/\s*—\s*animato.*$/i, "").trim().slice(0, 64) || "modello";
+        const name = `${base} — animato`.slice(0, 80);
+        const inserted = await getDb()
+          .insert(models)
+          .values({
+            userId: ctx.user.id,
+            name,
+            mode: "rig",
+            glbKey: "",
+            photoKey: parent.photoKey,
+            previewKey: parent.previewKey,
+            parentId: parent.id,
+            // segnaposto finché lavora: serve per rimborsare il prezzo giusto se il server si riavvia
+            fbxKey: input.fbx ? "fbx" : null,
+            quality: parent.quality,
+            target: parent.target,
+            views: parent.views,
+            status: "processing",
+            progress: 0,
+            stage: "In coda",
+          })
+          .returning({ id: models.id });
+        const id = inserted[0]?.id;
+        startRigJob(
+          id,
+          { modelUrl, animations: input.animations, spec: input.spec as (typeof RIG_SPECS)[number]["id"], fbx: input.fbx },
+          `${ctx.user.id}/${name.replace(/[^\p{L}\p{N} _.'-]/gu, "")}`,
+          cost > 0 ? { userId: ctx.user.id, cost } : undefined,
+        );
+        const row = await getDb().query.models.findFirst({ where: eq(models.id, id) });
+        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const [withUrl] = await withUrls([row]);
+        return withUrl;
+      });
     }),
 
   // Importa un file CAD (DWG/DXF/STEP/IGES/STL/OBJ/PLY) già convertito in GLB

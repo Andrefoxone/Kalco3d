@@ -163,6 +163,8 @@ export const DEFAULT_MATERIAL: MaterialStyle = {
 
 export interface ViewportCallbacks {
   onStateChange?: (state: LoadState) => void;
+  /** nomi delle animazioni del modello caricato (vuoto se statico) */
+  onAnimations?: (names: string[]) => void;
   onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
 }
 
@@ -198,6 +200,9 @@ export class ViewportScene {
   /** scala applicata per mostrare il modello a 2 unità: va tolta all'export */
   private normScale = 1;
   private raf = 0;
+  private mixer: THREE.AnimationMixer | null = null;
+  private clips: THREE.AnimationClip[] = [];
+  private clock = new THREE.Clock();
   private resizeObserver: ResizeObserver;
   private callbacks: ViewportCallbacks;
   private container: HTMLElement;
@@ -348,6 +353,8 @@ export class ViewportScene {
 
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
+    const dt = this.clock.getDelta();
+    this.mixer?.update(dt);
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };
@@ -371,6 +378,7 @@ export class ViewportScene {
           this.clearModel();
           this.placeModel(gltf.scene);
           this.applyMaterialStyle(this.materialStyle);
+          this.setupAnimations(gltf.scene, gltf.animations);
           this.setState("ready");
           resolve(true);
         },
@@ -424,8 +432,40 @@ export class ViewportScene {
     this.resetCamera();
   }
 
+  // ---------- animazioni (modelli con scheletro) ----------
+
+  private setupAnimations(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
+    this.clips = clips.filter((c) => c.duration > 0);
+    if (this.clips.length > 0) {
+      this.mixer = new THREE.AnimationMixer(root);
+      this.playAnimation(this.clips[0].name);
+    }
+    this.callbacks.onAnimations?.(this.clips.map((c) => c.name));
+  }
+
+  /** Avvia un'animazione per nome; null ferma tutto e torna alla posa di riposo. */
+  playAnimation(name: string | null) {
+    if (!this.mixer) return;
+    this.mixer.stopAllAction();
+    if (!name) return;
+    const clip = this.clips.find((c) => c.name === name);
+    if (!clip) return;
+    this.mixer.clipAction(clip).reset().setLoop(THREE.LoopRepeat, Infinity).play();
+  }
+
+  private stopAnimations() {
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      if (this.model) this.mixer.uncacheRoot(this.model);
+    }
+    this.mixer = null;
+    if (this.clips.length > 0) this.callbacks.onAnimations?.([]);
+    this.clips = [];
+  }
+
   private clearModel() {
     if (!this.model) return;
+    this.stopAnimations();
     this.transform.detach();
     this.clearHistory();
     this.targets.forEach((t) => t.dispose());

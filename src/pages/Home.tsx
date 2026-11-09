@@ -15,6 +15,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { GalleryPanel } from "@/components/GalleryPanel";
 import { StylePanel } from "@/components/StylePanel";
 import { VariantsPanel } from "@/components/VariantsPanel";
+import { AnimatePanel } from "@/components/AnimatePanel";
 import { PrintPanel } from "@/components/PrintPanel";
 import { CadImportPanel } from "@/components/CadImportPanel";
 import { importCadFile } from "@/lib/cadImport";
@@ -93,6 +94,8 @@ export default function Home() {
   const [sizeFromSource, setSizeFromSource] = useState(false);
   const [printReport, setPrintReport] = useState<PrintReport | null>(null);
   const [cadBusy, setCadBusy] = useState(false);
+  const [clips, setClips] = useState<string[]>([]);
+  const [playing, setPlaying] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
   const auth = useAuth();
@@ -254,9 +257,9 @@ export default function Home() {
   );
 
   const handleDownload = useCallback(
-    async (item: ModelItemDTO) => {
+    async (item: ModelItemDTO, format: "glb" | "fbx" = "glb") => {
       try {
-        const { url, name } = await utils.models.download.fetch({ id: item.id });
+        const { url, name } = await utils.models.download.fetch({ id: item.id, format });
         const a = document.createElement("a");
         a.href = url;
         a.download = name;
@@ -438,6 +441,10 @@ export default function Home() {
           <Viewport3D
             ref={viewportRef}
             onStateChange={setLoadState}
+            onAnimations={(names) => {
+              setClips(names);
+              setPlaying(names[0] ?? null);
+            }}
             onHistoryChange={(u, r) => {
               setCanUndo(u);
               setCanRedo(r);
@@ -552,7 +559,7 @@ export default function Home() {
         {/* pannello */}
         <aside className="flex min-h-0 w-full flex-1 flex-col border-t border-[#e4e4e4] bg-[#fcfcfc] lg:w-96 lg:flex-none lg:border-l lg:border-t-0">
           <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="grid h-[52px] w-full shrink-0 grid-cols-6 rounded-none border-b border-[#e4e4e4] bg-transparent p-0">
+            <TabsList className="grid h-[52px] w-full shrink-0 grid-cols-7 rounded-none border-b border-[#e4e4e4] bg-transparent p-0">
               <TabsTrigger
                 value="crea"
                 className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
@@ -576,6 +583,12 @@ export default function Home() {
                 className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
               >
                 Stampa
+              </TabsTrigger>
+              <TabsTrigger
+                value="anima"
+                className="h-full rounded-none px-0.5 text-[10px] uppercase tracking-[0.06em] data-[state=active]:bg-transparent data-[state=active]:text-[#ff670d] data-[state=active]:shadow-[inset_0_-2px_0_#ff670d]"
+              >
+                Anima
               </TabsTrigger>
               <TabsTrigger
                 value="galleria"
@@ -660,6 +673,20 @@ export default function Home() {
                   onSizeMm={setSizeMm}
                   getInput={() => viewportRef.current?.getPrintInput() ?? null}
                   modelSize={printReport?.size ?? null}
+                />
+              </TabsContent>
+              <TabsContent value="anima" className="m-0">
+                <AnimatePanel
+                  active={active}
+                  hasModel={hasModel}
+                  clips={clips}
+                  playing={playing}
+                  onPlay={(name) => {
+                    setPlaying(name);
+                    viewportRef.current?.playAnimation(name);
+                  }}
+                  onQueued={() => setTab("galleria")}
+                  onDownload={(item, format) => void handleDownload(item, format)}
                 />
               </TabsContent>
               <TabsContent value="foto" className="m-0">

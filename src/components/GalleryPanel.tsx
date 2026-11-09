@@ -12,6 +12,7 @@ const TARGET_LABEL: Record<string, string> = {
 
 function modeLabel(item: ModelItemDTO): string {
   if (item.mode === "cad") return "CAD";
+  if (item.mode === "rig") return "Animato";
   if (item.mode === "ai") {
     const parts = [item.quality && QUALITY_LABEL[item.quality], item.target && TARGET_LABEL[item.target]].filter(Boolean);
     return parts.length ? `AI ${parts.join(" · ")}` : "AI realistica";

@@ -24,4 +24,8 @@ export interface ModelItemDTO {
   previewUrl: string | null;
   glbUrl: string | null;
   photoUrl: string | null;
+  /** modello animato: origine, copia FBX e animazioni nel file */
+  parentId?: number | null;
+  fbxKey?: string | null;
+  animations?: string | null;
 }
