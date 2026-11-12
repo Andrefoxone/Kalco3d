@@ -4,6 +4,7 @@ import {
   MarbleError,
   parseExport,
   parseWorld,
+  pickHqSpz,
   pickSpz,
   progressOf,
   startGeneration,
@@ -81,6 +82,12 @@ describe("risultato", () => {
       metricScale: 1.7,
       groundOffset: 0.4,
     });
+  });
+  it("alta qualità: full_res accanto alla versione leggera da 500k", () => {
+    expect(pickHqSpz({ "500k": "a", full_res: "b" }, "500k")).toEqual({ key: "full_res", url: "b" });
+    expect(pickHqSpz({ full_res: "b" }, "full_res")).toBeNull();
+    const w = parseWorld({ world_id: "w", assets: { splats: { spz_urls: { "100k": "s", "500k": "m", full_res: "l" } } } });
+    expect(w).toMatchObject({ spzUrl: "m", spzHqUrl: "l", spzHqResolution: "full_res", spzResolutions: ["100k", "500k", "full_res"] });
   });
   it("parseWorld senza metadati: scala 1, pavimento 0", () => {
     const w = parseWorld({ world_id: "w", assets: { splats: { spz_urls: { full_res: "u" } } } });

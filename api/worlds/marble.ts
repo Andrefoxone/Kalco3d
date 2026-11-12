@@ -101,6 +101,13 @@ export async function startGeneration(body: Record<string, unknown>, signal: Abo
   return id;
 }
 
+/** Legge una scena già generata (gratis): serve per recuperare i file. */
+export async function getWorld(worldId: string, signal: AbortSignal): Promise<Json> {
+  const res = await call("GET", `/worlds/${encodeURIComponent(worldId)}`, undefined, signal, 30_000);
+  // la risposta può essere il World o { world: World }
+  return res?.world_id ? res : (res?.world ?? res);
+}
+
 /** Avvia l'export della mesh GLB texturizzata (3.500 crediti World Labs = 2,80 $). */
 export async function startMeshExport(worldId: string, signal: AbortSignal): Promise<string> {
   const op = await call(
@@ -175,6 +182,11 @@ export interface ParsedWorld {
   spzUrl: string;
   /** chiave della risoluzione scelta (es. "500k") */
   spzResolution: string;
+  /** versione a piena risoluzione (più nitida, file più grande), se diversa */
+  spzHqUrl: string | null;
+  spzHqResolution: string | null;
+  /** tutte le risoluzioni offerte dal motore (per i log) */
+  spzResolutions: string[];
   colliderUrl: string | null;
   panoUrl: string | null;
   thumbUrl: string | null;
@@ -185,6 +197,18 @@ export interface ParsedWorld {
 
 /** Per il web: abbastanza dettaglio senza file enormi. */
 const SPZ_PREFERENCE = ["500k", "full_res", "1m", "100k"];
+/** Per l'alta qualità: la risoluzione più piena disponibile. */
+const SPZ_HQ_PREFERENCE = ["full_res", "2m", "1m"];
+
+/** Versione ad alta risoluzione, se diversa da quella leggera. */
+export function pickHqSpz(urls: unknown, light: string | null): { key: string; url: string } | null {
+  if (!urls || typeof urls !== "object") return null;
+  const map = urls as Record<string, unknown>;
+  for (const k of SPZ_HQ_PREFERENCE) {
+    if (k !== light && typeof map[k] === "string" && map[k]) return { key: k, url: map[k] as string };
+  }
+  return null;
+}
 
 export function pickSpz(urls: unknown): { key: string; url: string } | null {
   if (!urls || typeof urls !== "object") return null;
@@ -202,8 +226,10 @@ export function parseWorld(resp: Json): ParsedWorld {
   const worldId = str(resp?.world_id);
   if (!worldId) throw new MarbleError("risultato senza world_id");
   const assets = resp?.assets ?? {};
-  const spz = pickSpz(assets?.splats?.spz_urls);
+  const urls = assets?.splats?.spz_urls;
+  const spz = pickSpz(urls);
   if (!spz) throw new MarbleError("la scena non contiene un file SPZ");
+  const hq = pickHqSpz(urls, spz.key);
   const sem = assets?.splats?.semantics_metadata ?? {};
   const scale = Number(sem.metric_scale_factor);
   const ground = Number(sem.ground_plane_offset);
@@ -213,6 +239,9 @@ export function parseWorld(resp: Json): ParsedWorld {
     caption: str(resp?.caption)?.slice(0, 600) ?? null,
     spzUrl: spz.url,
     spzResolution: spz.key,
+    spzHqUrl: hq?.url ?? null,
+    spzHqResolution: hq?.key ?? null,
+    spzResolutions: urls && typeof urls === "object" ? Object.keys(urls as object) : [],
     colliderUrl: str(assets?.mesh?.collider_mesh_url),
     panoUrl: str(assets?.imagery?.pano_url),
     thumbUrl: str(resp?.thumbnail_url) ?? str(assets?.thumbnail_url),

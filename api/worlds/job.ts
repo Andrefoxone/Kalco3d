@@ -9,6 +9,7 @@ import { log } from "../lib/logger";
 import { addCredits } from "../lib/credits";
 import {
   fetchAsset,
+  getWorld,
   MarbleError,
   parseExport,
   parseWorld,
@@ -129,6 +130,9 @@ async function executeWorldJob(id: number, body: Record<string, unknown>, userId
     extra(world.panoUrl, "panorama", "png"),
     extra(world.colliderUrl, "collisione", "glb"),
   ]);
+  // alta qualità: facoltativa, se non entra nei limiti resta la versione leggera
+  onProgress(97, "Versione ad alta qualità");
+  const hq = world.spzHqUrl ? await saveHqSpz(id, world.spzHqUrl, world.spzHqResolution ?? "hq", base, signal) : null;
 
   await update(id, {
     status: "ready",
@@ -146,8 +150,49 @@ async function executeWorldJob(id: number, body: Record<string, unknown>, userId
     metricScale: world.metricScale,
     groundOffset: world.groundOffset,
     sizeBytes: spz.data.length,
+    spzHqKey: hq?.key ?? null,
+    spzHqResolution: hq ? (world.spzHqResolution ?? "hq").slice(0, 16) : null,
+    spzHqBytes: hq?.bytes ?? 0,
   });
-  log.info("world job done", { worldRowId: id, worldId: world.worldId, spzBytes: spz.data.length, resolution: world.spzResolution });
+  log.info("world job done", {
+    worldRowId: id,
+    worldId: world.worldId,
+    spzBytes: spz.data.length,
+    resolution: world.spzResolution,
+    hqBytes: hq?.bytes ?? 0,
+    resolutions: world.spzResolutions.join(","),
+  });
+}
+
+async function saveHqSpz(id: number, url: string, resolution: string, base: string, signal: AbortSignal) {
+  try {
+    const f = await fetchAsset(url, signal);
+    const saved = await storage.uploadFile({
+      fileContent: new Uint8Array(f.data),
+      fileName: `${base}-${resolution}.spz`,
+      contentType: "application/octet-stream",
+    });
+    return { key: saved.key, bytes: f.data.length };
+  } catch (err) {
+    log.warn("world: alta qualità non salvata", { worldRowId: id, error: errorText(err) });
+    return null;
+  }
+}
+
+/**
+ * Scene create prima dell'alta qualità: rilegge la scena da World Labs
+ * (gratis) e salva la versione a piena risoluzione.
+ */
+export async function fetchHqForWorld(id: number, worldId: string, userId: string): Promise<{ ok: boolean; reason?: string }> {
+  const signal = AbortSignal.timeout(5 * 60_000);
+  const world = parseWorld(await getWorld(worldId, signal));
+  log.info("world hq: risoluzioni disponibili", { worldRowId: id, resolutions: world.spzResolutions.join(",") });
+  if (!world.spzHqUrl) return { ok: false, reason: "World Labs non offre una versione più dettagliata di questa scena" };
+  const base = `${userId}/scene/${stampNow()}-${id}`;
+  const hq = await saveHqSpz(id, world.spzHqUrl, world.spzHqResolution ?? "hq", base, signal);
+  if (!hq) return { ok: false, reason: "Il file ad alta qualità non si è potuto salvare (troppo grande?)" };
+  await update(id, { spzHqKey: hq.key, spzHqResolution: (world.spzHqResolution ?? "hq").slice(0, 16), spzHqBytes: hq.bytes });
+  return { ok: true };
 }
 
 // ── Mesh GLB della scena (su richiesta) ─────────────────────

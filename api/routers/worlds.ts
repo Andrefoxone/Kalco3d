@@ -9,7 +9,7 @@ import { worlds, type WorldRow } from "../../db/schema";
 import { storage } from "../lib/storage";
 import { addCredits, isAdmin, spendCredits } from "../lib/credits";
 import { buildGenerateBody, marbleAvailable, MarbleError, type WorldInput } from "../worlds/marble";
-import { canStartWorldJob, startMeshJob, startWorldJob } from "../worlds/job";
+import { canStartWorldJob, fetchHqForWorld, startMeshJob, startWorldJob } from "../worlds/job";
 import {
   MAX_WORLD_JOBS_PER_USER,
   WORLD_MESH_CREDITS,
@@ -33,7 +33,7 @@ async function withUrls(rows: WorldRow[]) {
     r.photoKey,
     r.thumbKey,
     r.panoKey,
-    ...(r.status === "ready" ? [r.spzKey, r.colliderKey] : []),
+    ...(r.status === "ready" ? [r.spzKey, r.spzHqKey, r.colliderKey] : []),
     ...(r.meshStatus === "ready" ? [r.meshKey] : []),
   ]).filter((k): k is string => Boolean(k));
   const { urls } = keys.length ? await storage.getPresignedUrls({ keys: [...new Set(keys)] }) : { urls: [] };
@@ -59,6 +59,11 @@ async function withUrls(rows: WorldRow[]) {
     thumbUrl: url(r.thumbKey),
     panoUrl: url(r.panoKey),
     spzUrl: r.status === "ready" ? url(r.spzKey) : null,
+    spzHqUrl: r.status === "ready" ? url(r.spzHqKey) : null,
+    spzHqResolution: r.spzHqResolution,
+    spzHqBytes: r.spzHqBytes,
+    /** scena vecchia senza alta qualità, recuperabile da World Labs */
+    canFetchHq: r.status === "ready" && !r.spzHqKey && Boolean(r.worldId),
     colliderUrl: r.status === "ready" ? url(r.colliderKey) : null,
     meshStatus: r.meshStatus as "processing" | "ready" | "failed" | null,
     meshError: r.meshError,
@@ -214,7 +219,7 @@ export const worldsRouter = createRouter({
     .input(z.object({ id: z.number().int(), file: z.enum(["spz", "mesh", "collider", "pano"]) }))
     .query(async ({ input, ctx }) => {
       const row = await own(input.id, ctx.user.id);
-      const key = { spz: row.spzKey, mesh: row.meshKey, collider: row.colliderKey, pano: row.panoKey }[input.file];
+      const key = { spz: row.spzHqKey ?? row.spzKey, mesh: row.meshKey, collider: row.colliderKey, pano: row.panoKey }[input.file];
       if (!key || row.status !== "ready" || (input.file === "mesh" && row.meshStatus !== "ready")) {
         throw new TRPCError({ code: "NOT_FOUND", message: "File non disponibile" });
       }
@@ -225,6 +230,22 @@ export const worldsRouter = createRouter({
       return { url, name };
     }),
 
+  /** Scene vecchie: recupera da World Labs la versione a piena risoluzione (gratis). */
+  fetchHq: authedQuery.input(z.object({ id: z.number().int() })).mutation(async ({ input, ctx }) => {
+    if (!marbleAvailable()) throw notConfigured();
+    const row = await own(input.id, ctx.user.id);
+    if (row.status !== "ready" || !row.worldId) throw new TRPCError({ code: "BAD_REQUEST", message: "La scena non è pronta" });
+    if (row.spzHqKey) return { ok: true };
+    try {
+      const r = await fetchHqForWorld(row.id, row.worldId, ctx.user.id);
+      if (!r.ok) throw new TRPCError({ code: "BAD_REQUEST", message: r.reason ?? "Alta qualità non disponibile" });
+      return { ok: true };
+    } catch (err) {
+      if (err instanceof TRPCError) throw err;
+      throw new TRPCError({ code: "BAD_GATEWAY", message: err instanceof MarbleError ? err.message : "World Labs non risponde, riprova tra poco" });
+    }
+  }),
+
   remove: authedQuery.input(z.object({ id: z.number().int() })).mutation(async ({ input, ctx }) => {
     const row = await own(input.id, ctx.user.id);
     if (row.status === "processing" || row.meshStatus === "processing") {
@@ -232,7 +253,7 @@ export const worldsRouter = createRouter({
     }
     await getDb().delete(worlds).where(eq(worlds.id, row.id));
     await storage
-      .deleteFiles([row.photoKey, row.spzKey, row.colliderKey, row.panoKey, row.thumbKey, row.meshKey].filter((k): k is string => Boolean(k)))
+      .deleteFiles([row.photoKey, row.spzKey, row.spzHqKey, row.colliderKey, row.panoKey, row.thumbKey, row.meshKey].filter((k): k is string => Boolean(k)))
       .catch(() => undefined);
     return { ok: true };
   }),

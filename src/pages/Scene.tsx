@@ -3,7 +3,7 @@
 // (render nel contesto, set per giochi, terreni per Building).
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, Box, Camera, Download, Eye, EyeOff, ImagePlus, Loader2, Mountain, RotateCcw, Trash2, Type } from "lucide-react";
+import { ArrowLeft, Box, Camera, Download, Eye, EyeOff, ImagePlus, Loader2, Mountain, RotateCcw, Sparkles, Trash2, Type } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Slider } from "@/components/ui/slider";
@@ -63,6 +63,7 @@ export default function Scene() {
   const generate = trpc.worlds.generate.useMutation();
   const exportMesh = trpc.worlds.exportMesh.useMutation();
   const remove = trpc.worlds.remove.useMutation();
+  const fetchHq = trpc.worlds.fetchHq.useMutation();
 
   // creazione
   const [mode, setMode] = useState<"foto" | "testo">("foto");
@@ -75,6 +76,8 @@ export default function Scene() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [view, setView] = useState({ loading: false, progress: 0, error: null as string | null });
   const [showCollider, setShowCollider] = useState(false);
+  // alta qualità di default sui computer; sul telefono la versione leggera
+  const [hq, setHq] = useState(() => typeof window === "undefined" || window.innerWidth >= 1024);
   const [modelId, setModelId] = useState<number | null>(null);
   const [heightM, setHeightM] = useState(0.6);
   const [rotationDeg, setRotationDeg] = useState(0);
@@ -91,12 +94,14 @@ export default function Scene() {
 
   // gli URL firmati cambiano a ogni aggiornamento della lista: il visualizzatore
   // ricarica solo se cambia la scena (chiave = id + percorso del file)
+  const useHq = hq && Boolean(selected?.spzHqUrl);
+  const activeSpz = selected ? (useHq ? selected.spzHqUrl! : selected.spzUrl!) : null;
   const sceneWorld = useMemo(
     () =>
       selected
         ? {
             id: selected.id,
-            spzUrl: selected.spzUrl!,
+            spzUrl: activeSpz!,
             colliderUrl: selected.colliderUrl,
             panoUrl: selected.panoUrl,
             metricScale: selected.metricScale,
@@ -104,7 +109,7 @@ export default function Scene() {
           }
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected?.id, selected?.spzUrl?.split("?")[0]],
+    [selected?.id, activeSpz?.split("?")[0]],
   );
   const sceneObject = useMemo(
     () => (chosenModel?.glbUrl ? { url: chosenModel.glbUrl, heightM, rotationDeg } : null),
@@ -156,6 +161,17 @@ export default function Scene() {
       openUrl(url);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Download non riuscito");
+    }
+  }
+
+  async function loadHq(w: WorldItem) {
+    try {
+      await fetchHq.mutateAsync({ id: w.id });
+      toast.success("Alta qualità pronta");
+      setHq(true);
+      void utils.worlds.list.invalidate();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Alta qualità non disponibile");
     }
   }
 
@@ -213,6 +229,15 @@ export default function Scene() {
             <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-center gap-2 text-[11px] text-white">
               <span className="bg-black/60 px-2 py-1.5">Trascina per guardarti intorno · WASD o frecce per muoverti · Q/E giù/su{chosenModel ? " · clic per posizionare l'oggetto" : ""}</span>
               <div className="ml-auto flex gap-1.5">
+                {selected.spzHqUrl ? (
+                  <ToolButton onClick={() => setHq((v) => !v)} label={useHq ? "Passa alla versione leggera" : "Passa all'alta qualità"}>
+                    <Sparkles className="size-3.5" /> {useHq ? "Alta qualità" : "Leggera"}
+                  </ToolButton>
+                ) : selected.canFetchHq ? (
+                  <ToolButton onClick={() => void loadHq(selected)} label="Carica l'alta qualità">
+                    {fetchHq.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />} Carica alta qualità
+                  </ToolButton>
+                ) : null}
                 <ToolButton onClick={() => viewer.current?.resetCamera()} label="Punto di partenza"><RotateCcw className="size-3.5" /></ToolButton>
                 {selected.colliderUrl && (
                   <ToolButton onClick={() => setShowCollider((v) => !v)} label={showCollider ? "Nascondi collisioni" : "Mostra collisioni"}>
@@ -330,7 +355,8 @@ export default function Scene() {
                         <div className="truncate text-sm">{w.name}</div>
                         <div className="text-[11px] text-[#6f6f6f]">
                           {WORLD_QUALITY_INFO[w.quality as WorldQuality]?.label ?? w.quality} · {w.source === "foto" ? "da foto" : "da testo"}
-                          {w.status === "ready" && w.sizeBytes > 0 ? ` · ${mb(w.sizeBytes)}` : ""}
+                          {w.status === "ready" && w.sizeBytes > 0 ? ` · ${mb(w.spzHqBytes || w.sizeBytes)}` : ""}
+                          {w.status === "ready" && w.spzHqUrl ? " · alta qualità" : ""}
                         </div>
                         {w.status === "processing" && (
                           <div className="mt-1.5">

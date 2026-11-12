@@ -84,6 +84,10 @@ export const worlds = pgTable("worlds", {
   caption: varchar("caption", { length: 600 }),
   spzKey: varchar("spz_key", { length: 255 }),
   spzResolution: varchar("spz_resolution", { length: 16 }),
+  /** splat a piena risoluzione (più nitido), facoltativo */
+  spzHqKey: varchar("spz_hq_key", { length: 255 }),
+  spzHqResolution: varchar("spz_hq_resolution", { length: 16 }),
+  spzHqBytes: integer("spz_hq_bytes").notNull().default(0),
   colliderKey: varchar("collider_key", { length: 255 }),
   panoKey: varchar("pano_key", { length: 255 }),
   thumbKey: varchar("thumb_key", { length: 255 }),
