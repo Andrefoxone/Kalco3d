@@ -124,3 +124,17 @@ Nota: la codifica dei colori e la disposizione su più piatti seguono i formati 
 ## Motori AI
 
 Aggiunto **Meshy** (`MESHY_API_KEY`, Meshy 7.1 / 6-lite per le bozze) alla pipeline multi-motore.
+
+## Scene 3D (`/scene`, World Labs Marble)
+
+Ambienti 3D esplorabili generati da **una foto** (stanza, terreno, panorama 360°) o da **una descrizione**, con il world model Marble di World Labs.
+
+- Motore: World API (`api/worlds/marble.ts`): `worlds:generate` → polling di `operations/{id}` → file della scena. Le scene restano private su World Labs (`permission.public = false`).
+- Job in background (`api/worlds/job.ts`): stesso schema dei modelli AI. Si salvano nello storage lo splat **SPZ** (risoluzione 500k per il web), la **mesh di collisione**, il **panorama** e la miniatura; i crediti tornano indietro se qualcosa fallisce o se il server si riavvia.
+- Tabella `worlds` (`supabase/migrations/0005_worlds.sql`), separata dalla galleria Modelli. **Va applicata nell'SQL Editor di Supabase prima di usare la sezione.**
+- Visualizzatore (`src/components/scene/SceneView.tsx`): [Spark](https://sparkjs.dev) (MIT, di World Labs) dentro Three.js. Conversione in metri con `metric_scale_factor`, pavimento a y = 0 con `ground_plane_offset`, rotazione di 180° su X (gli SPZ di Marble sono in convenzione OpenCV). Trascina per guardarti intorno, WASD/frecce per muoverti, Q/E per salire e scendere.
+- **Il tuo modello nella scena**: scegli un modello della galleria, altezza reale e rotazione; un clic sulla scena lo appoggia sulla mesh di collisione (o sul pavimento). Luce e riflessi del modello vengono dal panorama. «Foto» scarica un PNG della vista.
+- **Mesh GLB** della scena su richiesta (export HQ di World Labs) per Blender, Unreal, Rhino.
+- Crediti (`contracts/worlds.ts`): bozza 3, standard 20, grande 38, mesh GLB 42. Costo del motore: 0,12 $ / 1,20 $ / 1,20–2,40 $ / 2,80 $.
+- Serve `WORLDLABS_API_KEY` (crediti API da comprare su platform.worldlabs.ai, separati da quelli dell'app Marble). Senza chiave la pagina si apre ma la creazione è spenta.
+- Prima di vendere le scene: controllare i termini d'uso commerciale dei contenuti generati via API di World Labs.

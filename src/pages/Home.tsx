@@ -407,6 +407,12 @@ export default function Home() {
           >
             Building
           </Link>
+          <Link
+            to="/scene"
+            className="ml-1.5 self-center border border-[#ff670d] px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[#ff670d] transition-colors hover:bg-[#ff670d] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff670d]"
+          >
+            Scene
+          </Link>
         </div>
         <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-[#6f6f6f]">
           <span

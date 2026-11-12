@@ -9,6 +9,7 @@ import { log } from "./lib/logger";
 import { handleClientLog } from "./lib/clientlog";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
 import { sweepStaleAiJobs } from "./aiJob";
+import { sweepStaleWorldJobs } from "./worlds/job";
 import { processWebhook } from "./lib/billing";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
@@ -103,6 +104,7 @@ export default app;
 // I job AI "processing" di un eventuale processo precedente non riprenderanno
 // mai: vanno marcati falliti, così la galleria non mostra spinner eterni.
 await sweepStaleAiJobs();
+await sweepStaleWorldJobs();
 
 if (env.isProduction) {
   const { serve } = await import("@hono/node-server");

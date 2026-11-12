@@ -1,6 +1,6 @@
 // Schema Postgres (Supabase). La migrazione SQL corrispondente è in
 // supabase/migrations/0001_init.sql: tieni i due file allineati.
-import { bigint, integer, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { bigint, doublePrecision, integer, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
 export const models = pgTable("models", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
@@ -56,3 +56,47 @@ export const images = pgTable("images", {
 });
 
 export type ImageRow = typeof images.$inferSelect;
+
+/**
+ * Scene (ambienti 3D) generate con World Labs Marble
+ * (supabase/migrations/0005_worlds.sql). Separate dalla galleria Modelli.
+ */
+export const worlds = pgTable("worlds", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  userId: uuid("user_id").notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  /** testo | foto */
+  source: varchar("source", { length: 8 }).notNull(),
+  prompt: varchar("prompt", { length: 2000 }),
+  photoKey: varchar("photo_key", { length: 255 }),
+  /** bozza | standard | grande */
+  quality: varchar("quality", { length: 16 }).notNull(),
+  /** ready | processing | failed */
+  status: varchar("status", { length: 16 }).notNull().default("processing"),
+  error: varchar("error", { length: 255 }),
+  progress: integer("progress").notNull().default(0),
+  stage: varchar("stage", { length: 96 }),
+  /** crediti pagati per la scena (per il rimborso se il server si riavvia) */
+  creditsPaid: integer("credits_paid").notNull().default(0),
+  /** risultato del motore */
+  worldId: varchar("world_id", { length: 96 }),
+  marbleUrl: varchar("marble_url", { length: 255 }),
+  caption: varchar("caption", { length: 600 }),
+  spzKey: varchar("spz_key", { length: 255 }),
+  spzResolution: varchar("spz_resolution", { length: 16 }),
+  colliderKey: varchar("collider_key", { length: 255 }),
+  panoKey: varchar("pano_key", { length: 255 }),
+  thumbKey: varchar("thumb_key", { length: 255 }),
+  /** unità del motore → metri, e quota del pavimento */
+  metricScale: doublePrecision("metric_scale").notNull().default(1),
+  groundOffset: doublePrecision("ground_offset").notNull().default(0),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  /** mesh GLB texturizzata, su richiesta: null | processing | ready | failed */
+  meshStatus: varchar("mesh_status", { length: 16 }),
+  meshKey: varchar("mesh_key", { length: 255 }),
+  meshError: varchar("mesh_error", { length: 255 }),
+  meshCreditsPaid: integer("mesh_credits_paid").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type WorldRow = typeof worlds.$inferSelect;
